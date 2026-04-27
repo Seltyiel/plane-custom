@@ -1,0 +1,19 @@
+# Default: tratta come testo, normalizza a LF nel repo, LF nel working tree.
+# Risolve i "tutti i file modificati" che si vedono dopo un git clone su
+# Windows quando autocrlf=true converte a CRLF al checkout.
+* text=auto eol=lf
+
+# Eccezioni: gli script Windows preferiscono CRLF (cmd.exe gestisce sia,
+# ma alcune feature legacy hanno problemi con LF puro).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# File binari espliciti (non normalizzare line endings)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
