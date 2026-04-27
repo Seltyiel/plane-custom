@@ -17,11 +17,47 @@ import { PaidPlanUpgradeModal } from "../license";
 import { Button } from "@plane/propel/button";
 
 // Marker visibile per verificare che la build custom sia quella attiva.
-// Se vedi questo badge "PATCHED v1.20b" accanto a "Community", stai usando
+// Se vedi questo badge "PATCHED v1.20c" accanto a "Community", stai usando
 // la versione con le patch dei 5 layout (List/Board/Calendar/Table/Gantt)
 // in Workspace Views e Your Work, la filter parity v1.17, l'endpoint
 // backend del Team dashboard v1.18, la People page frontend v1.19/b/c, lo
-// schema workspace-level states v1.20a, e gli API endpoints CRUD v1.20b.
+// schema workspace-level states v1.20a, gli API endpoints CRUD v1.20b, e
+// il frontend store + service v1.20c.
+//
+// v1.20c: Workspace-level shared states - frontend store + service.
+//   STEP 3 di 4 della milestone v1.20.
+//   - project-state.service.ts (full replacement): aggiunti 4 metodi
+//     createWorkspaceState / patchWorkspaceState / deleteWorkspaceState /
+//     markWorkspaceStateAsDefault che consumano gli endpoint v1.20b.
+//   - state.store.ts (full replacement): aggiunti
+//     * computed: workspaceSharedStateIds, workspaceSharedStates,
+//       groupedWorkspaceSharedStates
+//     * getter: getWorkspaceSharedStateById, getWorkspaceSharedDefaultStateId
+//     * actions: createWorkspaceState, updateWorkspaceState,
+//       deleteWorkspaceState, markWorkspaceStateAsDefault (tutti con
+//       optimistic update + rollback su errore)
+//     * guardia: gli action workspace rifiutano di essere usati su un
+//       project-local state (project_id != null), e viceversa.
+//   - Tutti gli state (project + shared) restano nello stesso `stateMap`;
+//     la distinzione e' solo runtime via state.project_id.
+//
+//   Cosa NON fa v1.20c:
+//   - UI Workspace Settings (creazione/modifica shared states) -> v1.20d.
+//   - Toggle Project Settings "use workspace states" -> v1.20d.
+//   - Integrazione StateDropdown per fare merge dei workspace states nelle
+//     opzioni del dropdown -> v1.20d.
+//
+//   Visibile lato UI: niente. Lo store ha le API ma nessun consumer ancora
+//   le usa. Build deve girare normale come v1.20b.
+//
+//   Verifica build:
+//     1. Frontend compila senza type errors (TypeScript strict).
+//     2. App carica normalmente, nessuna regressione su project state CRUD
+//        esistente (creare/modificare state in Project Settings continua a
+//        funzionare).
+//     3. Da DevTools console: rootStore.state.workspaceSharedStateIds
+//        dovrebbe restituire array (vuoto o con gli shared state creati
+//        in v1.20b verify).
 //
 // v1.20b: Workspace-level shared states - API endpoints CRUD.
 //   STEP 2 di 4 della milestone v1.20.
@@ -287,7 +323,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.20b";
+const CUSTOM_PATCH_TAG = "PATCHED v1.20c";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

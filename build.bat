@@ -246,6 +246,15 @@ REM   - urls/workspace.py: 2 nuove path() registrate.
 copy /Y "%PATCHES_DIR%\03-backend\state-workspace-view.py" "%PLANE_SRC%\apps\api\plane\app\views\workspace\state.py" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.20c: frontend store + service per workspace shared states.
+REM   - project-state.service.ts: 4 nuovi metodi REST CRUD.
+REM   - state.store.ts: 4 nuove action + 4 nuovi computed + getter.
+REM   Nessun consumer ancora le usa (UI in v1.20d): build = invariato a UI.
+copy /Y "%PATCHES_DIR%\05-states\project-state-service.ts" "%PLANE_SRC%\apps\web\core\services\project\project-state.service.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\05-states\state-store.ts" "%PLANE_SRC%\apps\web\core\store\state.store.ts" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.19: Team dashboard frontend - People page.
 REM Servizio client per l'endpoint v1.18 (file nuovo, additivo):
 copy /Y "%PATCHES_DIR%\04-people-page\people-stats-service.ts" "%PLANE_SRC%\apps\web\core\services\people-stats.service.ts" >nul

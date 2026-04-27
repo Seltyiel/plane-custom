@@ -6,6 +6,25 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.20c] - 2026-04-27
+
+### Aggiunto
+- **Workspace-level shared states** (step 3 di 4) — frontend store + service.
+- `ProjectStateService`: 4 nuovi metodi REST CRUD per shared states:
+  - `createWorkspaceState(slug, data)` → POST `/api/workspaces/<slug>/states/`
+  - `patchWorkspaceState(slug, stateId, data)` → PATCH stesso path
+  - `deleteWorkspaceState(slug, stateId)` → DELETE
+  - `markWorkspaceStateAsDefault(slug, stateId)` → POST `.../mark-default/`
+- `StateStore`: 4 nuove action MobX (`createWorkspaceState`, `updateWorkspaceState`, `deleteWorkspaceState`, `markWorkspaceStateAsDefault`) con optimistic update + rollback su errore.
+- `StateStore`: 3 nuove computed (`workspaceSharedStateIds`, `workspaceSharedStates`, `groupedWorkspaceSharedStates`) e 2 getter (`getWorkspaceSharedStateById`, `getWorkspaceSharedDefaultStateId`).
+- Guardia: gli action workspace rifiutano di operare su state project-local (e viceversa) per evitare confusione.
+
+### Note
+- Lato UI niente cambia: nessun consumer ancora usa queste API. La integrazione StateDropdown + UI Workspace Settings arrivano in v1.20d.
+- Tutti gli state (project + shared) vivono nello stesso `stateMap`: la distinzione e' runtime via `state.project_id`.
+
+---
+
 ## [v1.20b] - 2026-04-27
 
 ### Aggiunto
