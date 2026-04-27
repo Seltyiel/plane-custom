@@ -1,0 +1,36 @@
+# Build artifacts e log
+build.log
+build-full.log
+diagnostic.log
+diagnostic_old.log
+*.log
+
+# Python bytecode (artefatto di test/import script)
+__pycache__/
+*.pyc
+*.pyo
+
+# Plane source clone (rigenerato da build.bat fuori OneDrive)
+source/
+
+# Compose override generato (contiene config locali, ma il file e' gia'
+# rigenerato da build.bat ad ogni run; mantenerlo fuori da git evita
+# conflitti se si muove fra macchine)
+plane-setup/docker-compose.override.yml
+
+# Secrets - plane.env contiene SECRET_KEY, password DB, ecc.
+# IMPORTANTE: non committare mai plane.env in plain text.
+plane-setup/plane.env
+
+# Editor
+.vscode/
+.idea/
+.cursor/
+.claude/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

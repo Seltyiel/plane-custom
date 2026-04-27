@@ -1,0 +1,396 @@
+/**
+ * Copyright (c) 2023-present Plane Software, Inc. and contributors
+ * SPDX-License-Identifier: AGPL-3.0-only
+ * See the LICENSE file for details.
+ *
+ * PATCH (plane-custom) v1.06 - Diagnostic traces inside BaseKanBanRoot.
+ * Il trace del layout dispatcher (v1.05) arriva fino a "about to render
+ * BaseKanBanRoot" e "mounted", ma il body resta bianco. Ora instrumentiamo
+ * BaseKanBanRoot *internamente* per capire se:
+ *  - IssueLayoutHOC ritorna loader (init-loader state)
+ *  - IssueLayoutHOC ritorna empty state (count === 0)
+ *  - IssueLayoutHOC ritorna i children (kanban vero)
+ * Tutti i log sono prefissati con [plane-custom][base-kanban] cosi' sono
+ * grep-abili in console.
+ */
+
+import type { FC } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
+import { dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import { autoScrollForElements } from "@atlaskit/pragmatic-drag-and-drop-auto-scroll/element";
+import { observer } from "mobx-react";
+import { useParams } from "next/navigation";
+import { EIssueFilterType, EUserPermissions, EUserPermissionsLevel } from "@plane/constants";
+import type { EIssuesStoreType } from "@plane/types";
+import { EIssueServiceType, EIssueLayoutTypes } from "@plane/types";
+//hooks
+import { useIssueDetail } from "@/hooks/store/use-issue-detail";
+import { useIssues } from "@/hooks/store/use-issues";
+import { useKanbanView } from "@/hooks/store/use-kanban-view";
+import { useUserPermissions } from "@/hooks/store/user";
+import { useGroupIssuesDragNDrop } from "@/hooks/use-group-dragndrop";
+import { useIssueStoreType } from "@/hooks/use-issue-layout-store";
+import { useIssuesActions } from "@/hooks/use-issues-actions";
+// PATCH v1.13: diagnostic file-based logger
+import { dlog } from "@/lib/diagnostic-logger";
+import { DeleteIssueModal } from "../../delete-issue-modal";
+import { IssueLayoutHOC } from "../issue-layout-HOC";
+import type { IQuickActionProps, TRenderQuickActions } from "../list/list-view-types";
+import { getSourceFromDropPayload } from "../utils";
+import { KanBan } from "./default";
+import { KanBanSwimLanes } from "./swimlanes";
+
+export type KanbanStoreType =
+  | EIssuesStoreType.PROJECT
+  | EIssuesStoreType.MODULE
+  | EIssuesStoreType.CYCLE
+  | EIssuesStoreType.PROJECT_VIEW
+  | EIssuesStoreType.PROFILE
+  | EIssuesStoreType.TEAM
+  | EIssuesStoreType.TEAM_VIEW
+  | EIssuesStoreType.EPIC
+  | EIssuesStoreType.GLOBAL;
+
+export interface IBaseKanBanLayout {
+  QuickActions: FC<IQuickActionProps>;
+  addIssuesToView?: (issueIds: string[]) => Promise<any>;
+  canEditPropertiesBasedOnProject?: (projectId: string) => boolean;
+  isCompletedCycle?: boolean;
+  viewId?: string | undefined;
+  isEpic?: boolean;
+}
+
+// PATCH v1.13: trace helper (alias su dlog file-based)
+const btrace = (msg: string, data?: unknown) => dlog("base-kanban", msg, data);
+
+// PATCH v1.08: swallow abort-induced `throw undefined` rejections.
+// Vedi base-list-root.tsx per la spiegazione completa. Senza questo,
+// cambiare layout da List a Kanban (o viceversa) lascia un
+// "Uncaught (in promise) undefined" che propaga fino a React e cestina
+// l'intero sottoalbero -> pagina bianca.
+const swallowAbort = (e: unknown) => {
+  if (e === undefined || e === null) {
+    dlog("base-kanban", "fetch aborted (swallowed)", null);
+    return;
+  }
+  dlog("base-kanban", "fetch rejected", {
+    message: (e as Error)?.message,
+    name: (e as Error)?.name,
+  });
+};
+
+export const BaseKanBanRoot = observer(function BaseKanBanRoot(props: IBaseKanBanLayout) {
+  const {
+    QuickActions,
+    addIssuesToView,
+    canEditPropertiesBasedOnProject,
+    isCompletedCycle = false,
+    viewId,
+    isEpic = false,
+  } = props;
+  btrace("render start", { viewId, isEpic });
+  const { workspaceSlug, projectId } = useParams();
+  const storeType = useIssueStoreType() as KanbanStoreType;
+  btrace("resolved storeType", { storeType, workspaceSlug, projectId });
+  const { allowPermissions } = useUserPermissions();
+  const { issueMap, issuesFilter, issues } = useIssues(storeType);
+
+  let _groupCount: unknown = "n/a";
+  try {
+    _groupCount = issues?.getGroupIssueCount?.(undefined, undefined, false);
+  } catch (e) {
+    _groupCount = `THROW: ${(e as Error)?.message}`;
+  }
+  btrace("store acquired", {
+    storeType,
+    viewId,
+    hasIssueMap: !!issueMap,
+    hasIssuesFilter: !!issuesFilter,
+    hasIssues: !!issues,
+    loader: issues?.getIssueLoader?.(),
+    groupCountNoFilters: _groupCount,
+    groupedIssueIdsType: typeof issues?.groupedIssueIds,
+    groupedIssueIdsKeys: issues?.groupedIssueIds
+      ? Object.keys(issues.groupedIssueIds).slice(0, 10)
+      : null,
+    viewFlags: issues?.viewFlags,
+  });
+
+  const {
+    issue: { getIssueById },
+  } = useIssueDetail(isEpic ? EIssueServiceType.EPICS : EIssueServiceType.ISSUES);
+  const {
+    fetchIssues,
+    fetchNextIssues,
+    quickAddIssue,
+    updateIssue,
+    removeIssue,
+    removeIssueFromView,
+    archiveIssue,
+    restoreIssue,
+    updateFilters,
+  } = useIssuesActions(storeType);
+
+  const deleteAreaRef = useRef<HTMLDivElement | null>(null);
+  const [isDragOverDelete, setIsDragOverDelete] = useState(false);
+
+  const { isDragging } = useKanbanView();
+
+  const displayFilters = issuesFilter?.issueFilters?.displayFilters;
+  const displayProperties = issuesFilter?.issueFilters?.displayProperties;
+
+  const sub_group_by = displayFilters?.sub_group_by;
+  const group_by = displayFilters?.group_by;
+  const orderBy = displayFilters?.order_by;
+
+  useEffect(() => {
+    // PATCH v1.13: tracing attorno alla fetchIssues
+    const t0 = Date.now();
+    btrace("fetchIssues called", {
+      storeType,
+      viewId,
+      group_by,
+      sub_group_by,
+      perPageCount: sub_group_by ? 10 : 30,
+    });
+    const p = fetchIssues(
+      "init-loader",
+      { canGroup: true, perPageCount: sub_group_by ? 10 : 30 },
+      viewId
+    );
+    btrace("fetchIssues returned promise?", {
+      isPromise: p && typeof (p as Promise<unknown>)?.then === "function",
+    });
+    p?.then(
+      (result) => {
+        const r = result as any;
+        btrace("fetchIssues resolved", {
+          ms: Date.now() - t0,
+          resultType: typeof result,
+          resultKeys:
+            result && typeof result === "object"
+              ? Object.keys(result as object).slice(0, 20)
+              : null,
+          // Campi specifici della response del backend
+          grouped_by_field: r?.grouped_by,
+          sub_grouped_by_field: r?.sub_grouped_by,
+          total_count: r?.total_count,
+          count: r?.count,
+          results_keys: r?.results
+            ? Array.isArray(r.results)
+              ? `array[${r.results.length}]`
+              : Object.keys(r.results).slice(0, 10)
+            : null,
+          // Stato dello store subito dopo la risposta
+          groupedIssueIdsNowKeys: issues?.groupedIssueIds
+            ? Object.keys(issues.groupedIssueIds).slice(0, 10)
+            : null,
+          issuesCount:
+            typeof issues?.getGroupIssueCount === "function"
+              ? issues.getGroupIssueCount(undefined, undefined, false)
+              : "n/a",
+        });
+      },
+      (err) => {
+        btrace("fetchIssues rejected", {
+          ms: Date.now() - t0,
+          errType: typeof err,
+          errIsUndefined: err === undefined,
+          errIsNull: err === null,
+          message: (err as Error)?.message,
+          name: (err as Error)?.name,
+        });
+      }
+    );
+    // PATCH v1.08: .catch(swallowAbort)
+    p?.catch(swallowAbort);
+  }, [fetchIssues, storeType, group_by, sub_group_by, viewId]);
+
+  const fetchMoreIssues = useCallback(
+    (groupId?: string, subgroupId?: string) => {
+      if (issues?.getIssueLoader(groupId, subgroupId) !== "pagination") {
+        // PATCH v1.08: .catch(swallowAbort)
+        fetchNextIssues(groupId, subgroupId)?.catch(swallowAbort);
+      }
+    },
+    [fetchNextIssues]
+  );
+
+  const groupedIssueIds = issues?.groupedIssueIds;
+  const userDisplayFilters = displayFilters || null;
+  const KanBanView = sub_group_by ? KanBanSwimLanes : KanBan;
+
+  const { enableInlineEditing, enableQuickAdd, enableIssueCreation } = issues?.viewFlags || {};
+  const scrollableContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const [draggedIssueId, setDraggedIssueId] = useState<string | undefined>(undefined);
+  const [deleteIssueModal, setDeleteIssueModal] = useState(false);
+
+  const isEditingAllowed = allowPermissions(
+    [EUserPermissions.ADMIN, EUserPermissions.MEMBER],
+    EUserPermissionsLevel.PROJECT
+  );
+
+  const handleOnDrop = useGroupIssuesDragNDrop(storeType, orderBy, group_by, sub_group_by);
+
+  const canEditProperties = useCallback(
+    (projectId: string | undefined) => {
+      const isEditingAllowedBasedOnProject =
+        canEditPropertiesBasedOnProject && projectId ? canEditPropertiesBasedOnProject(projectId) : isEditingAllowed;
+      return enableInlineEditing && isEditingAllowedBasedOnProject;
+    },
+    [canEditPropertiesBasedOnProject, enableInlineEditing, isEditingAllowed]
+  );
+
+  useEffect(() => {
+    const element = scrollableContainerRef.current;
+    if (!element) return;
+    return combine(autoScrollForElements({ element }));
+  }, []);
+
+  useEffect(() => {
+    const element = deleteAreaRef.current;
+    if (!element) return;
+    return combine(
+      dropTargetForElements({
+        element,
+        getData: () => ({ columnId: "issue-trash-box", groupId: "issue-trash-box", type: "DELETE" }),
+        onDragEnter: () => setIsDragOverDelete(true),
+        onDragLeave: () => setIsDragOverDelete(false),
+        onDrop: (payload) => {
+          setIsDragOverDelete(false);
+          const source = getSourceFromDropPayload(payload);
+          if (!source) return;
+          setDraggedIssueId(source.id);
+          setDeleteIssueModal(true);
+        },
+      })
+    );
+  }, [setIsDragOverDelete, setDraggedIssueId, setDeleteIssueModal]);
+
+  const renderQuickActions: TRenderQuickActions = useCallback(
+    ({ issue, parentRef, customActionButton }) => (
+      <QuickActions
+        parentRef={parentRef}
+        customActionButton={customActionButton}
+        issue={issue}
+        handleDelete={async () => removeIssue(issue.project_id, issue.id)}
+        handleUpdate={async (data) => updateIssue && updateIssue(issue.project_id, issue.id, data)}
+        handleRemoveFromView={async () => removeIssueFromView && removeIssueFromView(issue.project_id, issue.id)}
+        handleArchive={async () => archiveIssue && archiveIssue(issue.project_id, issue.id)}
+        handleRestore={async () => restoreIssue && restoreIssue(issue.project_id, issue.id)}
+        readOnly={!canEditProperties(issue.project_id ?? undefined) || isCompletedCycle}
+      />
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isCompletedCycle, canEditProperties, removeIssue, updateIssue, removeIssueFromView, archiveIssue, restoreIssue]
+  );
+
+  const handleDeleteIssue = async () => {
+    const draggedIssue = getIssueById(draggedIssueId ?? "");
+    if (!draggedIssueId || !draggedIssue) return;
+    try {
+      await removeIssue(draggedIssue.project_id, draggedIssueId);
+      setDeleteIssueModal(false);
+      setDraggedIssueId(undefined);
+    } catch (_error) {
+      setDeleteIssueModal(false);
+      setDraggedIssueId(undefined);
+    }
+  };
+
+  const handleCollapsedGroups = useCallback(
+    (toggle: "group_by" | "sub_group_by", value: string) => {
+      if (workspaceSlug) {
+        let collapsedGroups = issuesFilter?.issueFilters?.kanbanFilters?.[toggle] || [];
+        if (collapsedGroups.includes(value)) {
+          collapsedGroups = collapsedGroups.filter((_value) => _value != value);
+        } else {
+          collapsedGroups.push(value);
+        }
+        updateFilters(projectId?.toString() ?? "", EIssueFilterType.KANBAN_FILTERS, {
+          [toggle]: collapsedGroups,
+        });
+      }
+    },
+    [workspaceSlug, issuesFilter, projectId, updateFilters]
+  );
+
+  const collapsedGroups = issuesFilter?.issueFilters?.kanbanFilters || { group_by: [], sub_group_by: [] };
+
+  btrace("about to render IssueLayoutHOC", {
+    layout: "KANBAN",
+    storeType,
+    viewId,
+    group_by,
+    sub_group_by,
+    orderBy,
+    showEmptyGroup: userDisplayFilters?.show_empty_groups ?? true,
+    enableInlineEditing,
+    enableQuickAdd,
+    enableIssueCreation,
+    groupedIssueIdsKeys: groupedIssueIds
+      ? Object.keys(groupedIssueIds).slice(0, 10)
+      : null,
+    groupedIssueIdsKeyCount: groupedIssueIds
+      ? Object.keys(groupedIssueIds).length
+      : 0,
+  });
+
+  return (
+    <>
+      <DeleteIssueModal
+        dataId={draggedIssueId}
+        isOpen={deleteIssueModal}
+        handleClose={() => setDeleteIssueModal(false)}
+        onSubmit={handleDeleteIssue}
+        isEpic={isEpic}
+      />
+      <div
+        className={`fixed left-1/2 -translate-x-1/2 ${isDragging ? "z-40" : ""} top-3 mx-3 flex w-72 items-center justify-center`}
+        ref={deleteAreaRef}
+      >
+        <div
+          className={`${isDragging ? `opacity-100` : `opacity-0`} flex w-full items-center justify-center rounded-sm border-2 border-danger-strong/20 bg-surface-1 px-3 py-5 text-11 font-medium text-danger-primary italic ${isDragOverDelete ? "bg-danger-primary blur-2xl" : ""} transition duration-300`}
+        >
+          Drop here to delete the work item.
+        </div>
+      </div>
+      <IssueLayoutHOC layout={EIssueLayoutTypes.KANBAN}>
+        <div
+          className={`horizontal-scrollbar relative flex scrollbar-lg h-full w-full bg-surface-2 ${sub_group_by ? "vertical-scrollbar overflow-y-auto" : "overflow-x-auto overflow-y-hidden"}`}
+          ref={scrollableContainerRef}
+        >
+          <div className="relative h-full w-max min-w-full bg-surface-2">
+            <div className="h-full w-max">
+              <KanBanView
+                issuesMap={issueMap}
+                groupedIssueIds={groupedIssueIds ?? {}}
+                getGroupIssueCount={issues.getGroupIssueCount}
+                displayProperties={displayProperties}
+                sub_group_by={sub_group_by}
+                group_by={group_by}
+                orderBy={orderBy}
+                updateIssue={updateIssue}
+                quickActions={renderQuickActions}
+                handleCollapsedGroups={handleCollapsedGroups}
+                collapsedGroups={collapsedGroups}
+                enableQuickIssueCreate={enableQuickAdd}
+                showEmptyGroup={userDisplayFilters?.show_empty_groups ?? true}
+                quickAddCallback={quickAddIssue}
+                disableIssueCreation={!enableIssueCreation || !isEditingAllowed || isCompletedCycle}
+                canEditProperties={canEditProperties}
+                addIssuesToView={addIssuesToView}
+                scrollableContainerRef={scrollableContainerRef}
+                handleOnDrop={handleOnDrop}
+                loadMoreIssues={fetchMoreIssues}
+                isEpic={isEpic}
+              />
+            </div>
+          </div>
+        </div>
+      </IssueLayoutHOC>
+    </>
+  );
+});

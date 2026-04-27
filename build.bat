@@ -1,0 +1,367 @@
+@echo off
+setlocal enableextensions
+echo ==========================================
+echo   Build Plane Custom - Full 5 Layouts
+echo   (List, Board, Calendar, Table, Gantt)
+echo ==========================================
+echo.
+
+REM -------------------------------------------------------
+REM Path critici
+REM   PROJECT_DIR = questa cartella (in OneDrive) - contiene patches/ e Dockerfile
+REM   BUILD_ROOT  = area di build FUORI da OneDrive (evita Files On-Demand)
+REM -------------------------------------------------------
+set PROJECT_DIR=%~dp0
+set PATCHES_DIR=%~dp0patches
+set DOCKERFILE=%~dp0Dockerfile.custom-web
+set BUILD_ROOT=%USERPROFILE%\plane-build
+set SRC_ROOT=%BUILD_ROOT%\source
+set PLANE_SRC=%SRC_ROOT%\plane
+
+echo Project dir (OneDrive): %PROJECT_DIR%
+echo Build area (locale):    %BUILD_ROOT%
+echo.
+
+REM Log file in OneDrive (comodo da consultare)
+set LOG=%PROJECT_DIR%build.log
+echo Build started %DATE% %TIME% > "%LOG%"
+
+echo Press any key to start, or close this window to abort.
+pause
+
+REM -------------------------------------------------------
+REM 1. Pulisci e clona sorgente Plane (FUORI da OneDrive)
+REM -------------------------------------------------------
+echo [1/6] Pulizia e clone sorgente Plane in %BUILD_ROOT%... >> "%LOG%"
+echo [1/6] Pulizia e clone sorgente Plane in %BUILD_ROOT%...
+
+if not exist "%BUILD_ROOT%" (
+    mkdir "%BUILD_ROOT%"
+    if errorlevel 1 (
+        echo ERRORE: Impossibile creare %BUILD_ROOT%.
+        pause
+        exit /b 1
+    )
+)
+
+if exist "%SRC_ROOT%" (
+    echo     Rimozione %SRC_ROOT% precedente...
+    rmdir /s /q "%SRC_ROOT%"
+)
+
+mkdir "%SRC_ROOT%"
+if errorlevel 1 (
+    echo ERRORE: Impossibile creare %SRC_ROOT%.
+    pause
+    exit /b 1
+)
+
+pushd "%SRC_ROOT%"
+git clone --depth=1 https://github.com/makeplane/plane.git 1>> "%LOG%" 2>&1
+if errorlevel 1 (
+    echo ERRORE: git clone fallito. Verifica git + connessione.
+    echo Controlla il log: %LOG%
+    popd
+    pause
+    exit /b 1
+)
+popd
+echo     OK - Sorgente clonato in %PLANE_SRC%.
+
+if not exist "%PLANE_SRC%\apps\web\core\components\profile\profile-issues.tsx" (
+    echo ERRORE: Struttura sorgente non trovata dopo il clone.
+    pause
+    exit /b 1
+)
+
+REM Hardening del .dockerignore: esclude cartelle di editor/IDE che potrebbero
+REM comparire se qualcuno apre la sorgente con Claude Code/Cursor/VSCode.
+echo. >> "%PLANE_SRC%\.dockerignore"
+echo # Aggiunto da build.bat - esclude configurazioni editor >> "%PLANE_SRC%\.dockerignore"
+echo .claude >> "%PLANE_SRC%\.dockerignore"
+echo **/.claude >> "%PLANE_SRC%\.dockerignore"
+echo .cursor >> "%PLANE_SRC%\.dockerignore"
+echo **/.cursor >> "%PLANE_SRC%\.dockerignore"
+
+REM -------------------------------------------------------
+REM 2. Copia file patch (full replacements) da OneDrive -> BUILD
+REM -------------------------------------------------------
+echo [2/6] Applicando patch di sostituzione file...
+echo [2/6] Applicando patch di sostituzione file... >> "%LOG%"
+
+copy /Y "%PATCHES_DIR%\02-filters\profile-issues.tsx" "%PLANE_SRC%\apps\web\core\components\profile\profile-issues.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+copy /Y "%PATCHES_DIR%\02-filters\profile-issues-filter.tsx" "%PLANE_SRC%\apps\web\core\components\profile\profile-issues-filter.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+copy /Y "%PATCHES_DIR%\01-layouts\shared\ce-views-helper.tsx" "%PLANE_SRC%\apps\web\ce\components\views\helper.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+copy /Y "%PATCHES_DIR%\01-layouts\workspace-roots\list-workspace-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\list\roots\workspace-root.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+copy /Y "%PATCHES_DIR%\01-layouts\workspace-roots\kanban-workspace-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\kanban\roots\workspace-root.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+copy /Y "%PATCHES_DIR%\01-layouts\profile-roots\spreadsheet-profile-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\spreadsheet\roots\profile-issues-root.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM Crea cartelle roots mancanti per calendar e gantt
+if not exist "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\calendar\roots" (
+    mkdir "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\calendar\roots"
+)
+if not exist "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\gantt\roots" (
+    mkdir "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\gantt\roots"
+)
+
+copy /Y "%PATCHES_DIR%\01-layouts\profile-roots\calendar-profile-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\calendar\roots\profile-issues-root.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+copy /Y "%PATCHES_DIR%\01-layouts\profile-roots\gantt-profile-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\gantt\roots\profile-issues-root.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+copy /Y "%PATCHES_DIR%\01-layouts\workspace-roots\calendar-workspace-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\calendar\roots\workspace-root.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+copy /Y "%PATCHES_DIR%\01-layouts\workspace-roots\gantt-workspace-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\gantt\roots\workspace-root.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.16: rimuove fetchIssues redundante di AllIssueLayoutRoot che sovrascriveva
+REM la fetch grouped del Calendar (workspace views) -> calendario vuoto.
+copy /Y "%PATCHES_DIR%\01-layouts\shared\all-issue-layout-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\roots\all-issue-layout-root.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM ErrorBoundary diagnostico per catturare il vero errore dei 4 layout workspace
+copy /Y "%PATCHES_DIR%\99-diagnostics\workspace-layout-error-boundary.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\workspace-layout-error-boundary.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM Global error logger su window + onRecoverableError (smaschera errori React minificati)
+copy /Y "%PATCHES_DIR%\99-diagnostics\entry-client.tsx" "%PLANE_SRC%\apps\web\app\entry.client.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM Fix workspace.service.ts: 11 metodi throwavano error?.response senza .data -> "undefined"
+copy /Y "%PATCHES_DIR%\02-filters\workspace-service.ts" "%PLANE_SRC%\apps\web\core\services\workspace.service.ts" >nul
+if errorlevel 1 goto :patcherr
+
+REM Marker visibile "PATCHED v1" accanto a Community (verifica a occhio della build custom)
+copy /Y "%PATCHES_DIR%\00-core\edition-badge.tsx" "%PLANE_SRC%\apps\web\ce\components\workspace\edition-badge.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+echo     OK - File di patch base applicati.
+
+REM -------------------------------------------------------
+REM 3. Copia file con type union estesi
+REM -------------------------------------------------------
+echo [3/6] Applicando patch con type unions estesi (GLOBAL/PROFILE)...
+echo [3/6] Applicando patch union... >> "%LOG%"
+
+copy /Y "%PATCHES_DIR%\01-layouts\base-roots\base-list-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\list\base-list-root.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+copy /Y "%PATCHES_DIR%\01-layouts\base-roots\base-kanban-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\kanban\base-kanban-root.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.06: HOC con traces per capire se mostra loader/empty/children
+copy /Y "%PATCHES_DIR%\01-layouts\shared\issue-layout-HOC.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\issue-layout-HOC.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+copy /Y "%PATCHES_DIR%\01-layouts\base-roots\base-spreadsheet-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\spreadsheet\base-spreadsheet-root.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+copy /Y "%PATCHES_DIR%\01-layouts\shared\use-group-dragndrop.ts" "%PLANE_SRC%\apps\web\core\hooks\use-group-dragndrop.ts" >nul
+if errorlevel 1 goto :patcherr
+
+copy /Y "%PATCHES_DIR%\01-layouts\base-roots\base-calendar-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\calendar\base-calendar-root.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+copy /Y "%PATCHES_DIR%\01-layouts\base-roots\base-gantt-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\gantt\base-gantt-root.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+copy /Y "%PATCHES_DIR%\02-filters\constants-issue-filter.ts" "%PLANE_SRC%\packages\constants\src\issue\filter.ts" >nul
+if errorlevel 1 goto :patcherr
+
+REM Patch workspace issue filter store: fix race condition + abort handling + layout hardcoding
+copy /Y "%PATCHES_DIR%\02-filters\workspace-filter-store.ts" "%PLANE_SRC%\apps\web\core\store\issue\workspace\filter.store.ts" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.07: issue-layouts/utils.tsx (getStateColumns+getCreatedByColumns workspace-aware)
+copy /Y "%PATCHES_DIR%\01-layouts\shared\layouts-utils.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\utils.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.08: global-view.store.ts (swallowAbort su fetchIssuesWithExistingPagination fire-and-forget)
+copy /Y "%PATCHES_DIR%\02-filters\global-view-store.ts" "%PLANE_SRC%\apps\web\core\store\global-view.store.ts" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.13: diagnostic file-based logger (dlog -> http://localhost:9999/log)
+REM Copia il modulo in apps/web/core/lib/ cosi' @/lib/diagnostic-logger risolve.
+if not exist "%PLANE_SRC%\apps\web\core\lib" (
+    mkdir "%PLANE_SRC%\apps\web\core\lib"
+)
+copy /Y "%PATCHES_DIR%\99-diagnostics\diagnostic-logger.ts" "%PLANE_SRC%\apps\web\core\lib\diagnostic-logger.ts" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.13: kanban default.tsx con tracing (early return null vs render)
+copy /Y "%PATCHES_DIR%\01-layouts\shared\kanban-default.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\kanban\default.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.15: backend WorkspaceViewIssuesViewSet per applicare group_by server-side.
+REM Senza questo, il backend /my-issues ignorava group_by e ritornava array piatto
+REM -> Kanban/Gantt workspace con bucket "All Issues" unico -> colonne vuote -> bianca.
+copy /Y "%PATCHES_DIR%\03-backend\view-base.py" "%PLANE_SRC%\apps\api\plane\app\views\view\base.py" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.18: Team dashboard backend - nuovo endpoint aggregato
+REM   GET /api/workspaces/<slug>/members/stats/
+REM Nuovo file (additivo):
+copy /Y "%PATCHES_DIR%\03-backend\api-team-stats-view.py" "%PLANE_SRC%\apps\api\plane\app\views\workspace\team_stats.py" >nul
+if errorlevel 1 goto :patcherr
+REM PATCH v1.19b: Team dashboard backend - per-member issue list (lazy tree).
+REM   GET /api/workspaces/<slug>/members/<uuid:user_id>/issues/
+REM Nuovo file (additivo):
+copy /Y "%PATCHES_DIR%\03-backend\api-team-issues-view.py" "%PLANE_SRC%\apps\api\plane\app\views\workspace\team_issues.py" >nul
+if errorlevel 1 goto :patcherr
+REM Registrazione route in urls/workspace.py (full replacement, include sia v1.18 che v1.19b):
+copy /Y "%PATCHES_DIR%\03-backend\api-urls-workspace.py" "%PLANE_SRC%\apps\api\plane\app\urls\workspace.py" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.19: Team dashboard frontend - People page.
+REM Servizio client per l'endpoint v1.18 (file nuovo, additivo):
+copy /Y "%PATCHES_DIR%\04-people-page\people-stats-service.ts" "%PLANE_SRC%\apps\web\core\services\people-stats.service.ts" >nul
+if errorlevel 1 goto :patcherr
+REM Crea cartella per la People page (nuova rotta workspace-level).
+REM NB: uso mkdir ... 2>nul invece di if-not-exist+mkdir in blocco, perche'
+REM     il path contiene parentesi (il gruppo route "(projects)") che possono
+REM     confondere il parser cmd.exe dentro un blocco "if (...) ( ... )".
+mkdir "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\people" 2>nul
+copy /Y "%PATCHES_DIR%\04-people-page\people-page.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\people\page.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\04-people-page\people-layout.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\people\layout.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\04-people-page\people-header.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\people\header.tsx" >nul
+if errorlevel 1 goto :patcherr
+REM Registrazione route in routes/core.ts (full replacement):
+copy /Y "%PATCHES_DIR%\04-people-page\routes-core.ts" "%PLANE_SRC%\apps\web\app\routes\core.ts" >nul
+if errorlevel 1 goto :patcherr
+REM Voce sidebar in packages/constants/src/workspace.ts (full replacement):
+copy /Y "%PATCHES_DIR%\04-people-page\constants-workspace.ts" "%PLANE_SRC%\packages\constants\src\workspace.ts" >nul
+if errorlevel 1 goto :patcherr
+REM Icona Users nello switch del sidebar helper (full replacement):
+copy /Y "%PATCHES_DIR%\04-people-page\sidebar-helper.tsx" "%PLANE_SRC%\apps\web\ce\components\workspace\sidebar\helper.tsx" >nul
+if errorlevel 1 goto :patcherr
+REM "people" aggiunto a staticItems in SidebarItemBase (altrimenti il gate
+REM isPinned+staticItems filtra via la voce, che resterebbe invisibile
+REM finche' nessun utente non la pinna manualmente):
+copy /Y "%PATCHES_DIR%\04-people-page\sidebar-item-base.tsx" "%PLANE_SRC%\apps\web\core\components\workspace\sidebar\sidebar-item.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+echo     OK - Type unions estesi.
+
+REM -------------------------------------------------------
+REM 4. Build immagine Docker (web + api)
+REM -------------------------------------------------------
+echo [4/6] Building immagine Docker web (20-40 minuti)...
+echo [4/6] Docker build web... >> "%LOG%"
+
+if not exist "%DOCKERFILE%" (
+    echo ERRORE: %DOCKERFILE% non trovato.
+    pause
+    exit /b 1
+)
+
+pushd "%PLANE_SRC%"
+docker build -f "%DOCKERFILE%" -t plane-web-custom:latest .
+if errorlevel 1 (
+    echo.
+    echo ERRORE: Docker build web fallito. Log: %LOG%
+    popd
+    pause
+    exit /b 1
+)
+popd
+echo     OK - Immagine web costruita.
+
+REM PATCH v1.15: build immagine API custom con backend patchato
+echo [4/6] Building immagine Docker api (5-15 minuti)...
+echo [4/6] Docker build api... >> "%LOG%"
+
+pushd "%PLANE_SRC%\apps\api"
+docker build -f Dockerfile.api -t plane-api-custom:latest .
+if errorlevel 1 (
+    echo.
+    echo ERRORE: Docker build api fallito. Log: %LOG%
+    popd
+    pause
+    exit /b 1
+)
+popd
+echo     OK - Immagine api costruita.
+
+REM -------------------------------------------------------
+REM 5. Crea docker-compose.override.yml
+REM -------------------------------------------------------
+echo [5/6] Configurando override...
+
+if not exist "%PROJECT_DIR%..\plane-app" (
+    echo ATTENZIONE: Cartella ..\plane-app non trovata. Salto override/restart.
+    (
+    echo services:
+    echo   web:
+    echo     image: plane-web-custom:latest
+    echo   api:
+    echo     image: plane-api-custom:latest
+    echo   worker:
+    echo     image: plane-api-custom:latest
+    echo   beat-worker:
+    echo     image: plane-api-custom:latest
+    echo   migrator:
+    echo     image: plane-api-custom:latest
+    ) > "%PROJECT_DIR%docker-compose.override.yml"
+    echo Generato docker-compose.override.yml in %PROJECT_DIR%.
+    goto :done
+)
+
+(
+echo services:
+echo   web:
+echo     image: plane-web-custom:latest
+echo   api:
+echo     image: plane-api-custom:latest
+echo   worker:
+echo     image: plane-api-custom:latest
+echo   beat-worker:
+echo     image: plane-api-custom:latest
+echo   migrator:
+echo     image: plane-api-custom:latest
+) > "%PROJECT_DIR%..\plane-app\docker-compose.override.yml"
+
+echo     OK - override creato (web + api + worker + beat-worker + migrator).
+
+REM -------------------------------------------------------
+REM 6. Riavvia i container web e api
+REM -------------------------------------------------------
+echo [6/6] Riavviando Plane (web + api + worker)...
+
+pushd "%PROJECT_DIR%..\plane-app"
+if exist "plane.env" (
+    docker compose --env-file plane.env up -d --no-deps web api worker beat-worker
+) else (
+    docker compose up -d --no-deps web api worker beat-worker
+)
+popd
+
+:done
+echo.
+echo ==========================================
+echo   COMPLETATO!
+echo   Apri http://localhost
+echo ==========================================
+pause
+exit /b 0
+
+:patcherr
+echo.
+echo ERRORE durante l'applicazione delle patch.
+echo Controlla il log: %LOG%
+pause
+exit /b 1
