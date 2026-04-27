@@ -17,11 +17,37 @@ import { PaidPlanUpgradeModal } from "../license";
 import { Button } from "@plane/propel/button";
 
 // Marker visibile per verificare che la build custom sia quella attiva.
-// Se vedi questo badge "PATCHED v1.20a" accanto a "Community", stai usando
+// Se vedi questo badge "PATCHED v1.20b" accanto a "Community", stai usando
 // la versione con le patch dei 5 layout (List/Board/Calendar/Table/Gantt)
 // in Workspace Views e Your Work, la filter parity v1.17, l'endpoint
-// backend del Team dashboard v1.18, la People page frontend v1.19/b/c, e
-// il primo step di Workspace-level states v1.20a (backend schema).
+// backend del Team dashboard v1.18, la People page frontend v1.19/b/c, lo
+// schema workspace-level states v1.20a, e gli API endpoints CRUD v1.20b.
+//
+// v1.20b: Workspace-level shared states - API endpoints CRUD.
+//   STEP 2 di 4 della milestone v1.20.
+//   - workspace/state.py (full replacement): WorkspaceStatesEndpoint esteso
+//     con POST oltre al GET (con filtro modificato per includere project=NULL),
+//     piu' nuovi WorkspaceStateDetailEndpoint (GET/PATCH/DELETE) e
+//     WorkspaceStateMarkDefaultEndpoint (POST).
+//   - urls/workspace.py: 2 nuove path() registrate:
+//       /workspaces/<slug>/states/<uuid:pk>/                (Detail)
+//       /workspaces/<slug>/states/<uuid:pk>/mark-default/   (MarkDefault)
+//   - Permission: GET aperto a Member; POST/PATCH/DELETE/mark-default
+//     riservati ad Admin (WorkspaceAdminPermission).
+//   - DELETE: vieta default=True e refusa se Issue.state_id=pk esiste.
+//   - PATCH: non permette di cambiare project_id (resta NULL).
+//
+//   Cosa NON fa v1.20b:
+//   - Frontend store / service / dropdown integration (-> v1.20c).
+//   - UI Workspace Settings + Project Settings toggle (-> v1.20d).
+//
+//   Verifica build:
+//     1. POST /workspaces/<slug>/states/ con admin token deve creare uno
+//        State con project=NULL.
+//     2. GET stesso endpoint deve includere lo state appena creato.
+//     3. PATCH /workspaces/<slug>/states/<id>/ con name nuovo deve aggiornare.
+//     4. DELETE deve restituire 400 se ci sono issue che usano lo state,
+//        204 altrimenti.
 //
 // v1.20a: Workspace-level shared states (Opzione 3) - backend schema.
 //   STEP 1 di 4 della milestone v1.20.
@@ -261,7 +287,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.20a";
+const CUSTOM_PATCH_TAG = "PATCHED v1.20b";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

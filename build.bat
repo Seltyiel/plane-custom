@@ -239,6 +239,13 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\03-backend\project-base-view.py" "%PLANE_SRC%\apps\api\plane\app\views\project\base.py" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.20b: workspace shared states CRUD endpoints.
+REM   - workspace/state.py: GET (esteso) + POST + WorkspaceStateDetailEndpoint
+REM     (GET/PATCH/DELETE) + WorkspaceStateMarkDefaultEndpoint (POST).
+REM   - urls/workspace.py: 2 nuove path() registrate.
+copy /Y "%PATCHES_DIR%\03-backend\state-workspace-view.py" "%PLANE_SRC%\apps\api\plane\app\views\workspace\state.py" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.19: Team dashboard frontend - People page.
 REM Servizio client per l'endpoint v1.18 (file nuovo, additivo):
 copy /Y "%PATCHES_DIR%\04-people-page\people-stats-service.ts" "%PLANE_SRC%\apps\web\core\services\people-stats.service.ts" >nul

@@ -6,6 +6,27 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.20b] - 2026-04-27
+
+### Aggiunto
+- **Workspace-level shared states** (step 2 di 4) — API endpoints CRUD.
+- `POST /workspaces/<slug>/states/` — crea uno workspace shared state (project=NULL forzato).
+- `PATCH /workspaces/<slug>/states/<uuid:pk>/` — modifica nome / colore / group / sequence / default.
+- `DELETE /workspaces/<slug>/states/<uuid:pk>/` — cancella, con check default=False e nessun Issue che lo usa.
+- `POST /workspaces/<slug>/states/<uuid:pk>/mark-default/` — set default=True (e reset su altri shared dello stesso workspace).
+
+### Modificato
+- `GET /workspaces/<slug>/states/` (esistente) — query estesa: include sia project states (filtrati per project membership come stock) sia tutti gli workspace shared states (`project IS NULL`), via `Q(project__isnull=True) | Q(stock-membership-filter)`. Necessario perche' v1.20a introduce shared states che non hanno project — il filtro stock li avrebbe esclusi.
+
+### Permission
+- GET (list / retrieve) aperto a Admin/Member/Guest del workspace (`WorkspaceEntityPermission`).
+- POST / PATCH / DELETE / mark-default riservati a Admin (`WorkspaceAdminPermission`).
+
+### Note
+- Step successivi: v1.20c (frontend store/service), v1.20d (UI Workspace + Project settings).
+
+---
+
 ## [v1.20a] - 2026-04-27
 
 ### Aggiunto

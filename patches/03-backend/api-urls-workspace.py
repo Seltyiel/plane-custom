@@ -62,6 +62,16 @@ from plane.app.views.workspace.team_stats import WorkspaceMembersStatsEndpoint
 # PATCH v1.19b - endpoint issues per singolo membro (lazy load tree).
 from plane.app.views.workspace.team_issues import WorkspaceMemberIssuesEndpoint
 
+# PATCH v1.20b - workspace shared states CRUD endpoints (extension del file
+# stock workspace/state.py, full replacement gestito da build.bat).
+# WorkspaceStatesEndpoint e' lo stesso nome dello stock ma esposto dal
+# submodule (post-patch v1.20b ha anche POST oltre al GET).
+from plane.app.views.workspace.state import (
+    WorkspaceStatesEndpoint as _WSEndpointReplaced,  # noqa: F401 (used via stock import)
+    WorkspaceStateDetailEndpoint,
+    WorkspaceStateMarkDefaultEndpoint,
+)
+
 
 urlpatterns = [
     path(
@@ -206,6 +216,18 @@ urlpatterns = [
         "workspaces/<str:slug>/states/",
         WorkspaceStatesEndpoint.as_view(),
         name="workspace-state",
+    ),
+    # PATCH v1.20b: workspace shared state CRUD detail (singolo)
+    path(
+        "workspaces/<str:slug>/states/<uuid:pk>/",
+        WorkspaceStateDetailEndpoint.as_view(),
+        name="workspace-state-detail",
+    ),
+    # PATCH v1.20b: workspace shared state mark-default
+    path(
+        "workspaces/<str:slug>/states/<uuid:pk>/mark-default/",
+        WorkspaceStateMarkDefaultEndpoint.as_view(),
+        name="workspace-state-mark-default",
     ),
     path(
         "workspaces/<str:slug>/estimates/",
