@@ -225,6 +225,20 @@ REM Registrazione route in urls/workspace.py (full replacement, include sia v1.1
 copy /Y "%PATCHES_DIR%\03-backend\api-urls-workspace.py" "%PLANE_SRC%\apps\api\plane\app\urls\workspace.py" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.20a: Workspace-level shared states (Opzione 3).
+REM   - state.py model: project FK NULLABLE + 2 unique conditional indexes
+REM     (project-local vs workspace-shared scope).
+REM   - migration 0122: AlterField project nullable, RemoveConstraint legacy,
+REM     AlterUniqueTogether vuoto, AddConstraint x 2.
+REM   - project/base.py: skip i 6 default states quando esistono workspace
+REM     shared states (back-compat per workspace senza shared states).
+copy /Y "%PATCHES_DIR%\03-backend\state-model.py" "%PLANE_SRC%\apps\api\plane\db\models\state.py" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\03-backend\migration-0122-workspace-states.py" "%PLANE_SRC%\apps\api\plane\db\migrations\0122_v120a_workspace_level_states.py" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\03-backend\project-base-view.py" "%PLANE_SRC%\apps\api\plane\app\views\project\base.py" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.19: Team dashboard frontend - People page.
 REM Servizio client per l'endpoint v1.18 (file nuovo, additivo):
 copy /Y "%PATCHES_DIR%\04-people-page\people-stats-service.ts" "%PLANE_SRC%\apps\web\core\services\people-stats.service.ts" >nul

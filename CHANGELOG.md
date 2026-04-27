@@ -6,6 +6,24 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.20a] - 2026-04-27
+
+### Aggiunto
+- **Workspace-level shared states** (Opzione 3, step 1 di 4) — backend schema.
+- `State.project` diventa NULLABLE: stato con `project=NULL` + `workspace=X` e' visibile da tutti i progetti del workspace.
+- Due `UniqueConstraint` condizionali separano gli scope: project-local vs workspace-shared.
+- Migration `0122_v120a_workspace_level_states.py`: AlterField nullable + AlterUniqueTogether vuoto + RemoveConstraint legacy + AddConstraint x 2.
+- `ProjectViewSet.create`: skippa la creazione dei 6 `DEFAULT_STATES` se esistono gia' workspace shared states (back-compat per workspace pre-v1.20a).
+
+### Modificato
+- `State` non eredita piu' da `ProjectBaseModel` (che ha `project FK NOT NULL`); definisce esplicitamente i due FK + override `save()` per popolare workspace dal project quando disponibile.
+
+### Note
+- Nessun dato esistente toccato. Tutti gli `Issue.state_id` continuano a puntare ai loro project states.
+- Step successivi: v1.20b (API CRUD endpoints), v1.20c (frontend store/service), v1.20d (UI Workspace + Project settings).
+
+---
+
 ## [v1.19c] - 2026-04-27
 
 ### Aggiunto

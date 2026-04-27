@@ -17,12 +17,54 @@ import { PaidPlanUpgradeModal } from "../license";
 import { Button } from "@plane/propel/button";
 
 // Marker visibile per verificare che la build custom sia quella attiva.
-// Se vedi questo badge "PATCHED v1.19c" accanto a "Community", stai usando
+// Se vedi questo badge "PATCHED v1.20a" accanto a "Community", stai usando
 // la versione con le patch dei 5 layout (List/Board/Calendar/Table/Gantt)
 // in Workspace Views e Your Work, la filter parity v1.17, l'endpoint
-// backend del Team dashboard v1.18, la People page frontend v1.19, il
-// redesign v1.19b (lista espandibile con tree task/subtask), e la
-// versione v1.19c completamente interattiva.
+// backend del Team dashboard v1.18, la People page frontend v1.19/b/c, e
+// il primo step di Workspace-level states v1.20a (backend schema).
+//
+// v1.20a: Workspace-level shared states (Opzione 3) - backend schema.
+//   STEP 1 di 4 della milestone v1.20.
+//   - state.py model patch: State.project diventa NULLABLE per supportare
+//     state "shared" a livello workspace. State NON eredita piu' da
+//     ProjectBaseModel (che ha project NOT NULL); definisce esplicitamente
+//     project (FK NULL, related_name="project_state" preservato per
+//     bgtasks/workspace_seed_task.py) e workspace (FK NOT NULL,
+//     related_name="workspace_state").
+//   - Constraint refactor: rimosso unique_together legacy + il vecchio
+//     name="state_unique_name_project_when_deleted_at_null". Aggiunti due
+//     UniqueConstraint condizionali:
+//       state_unique_name_project_when_active:
+//         UNIQUE(name, project) WHERE deleted_at IS NULL AND project IS NOT NULL
+//       state_unique_name_workspace_shared_when_active:
+//         UNIQUE(name, workspace) WHERE deleted_at IS NULL AND project IS NULL
+//   - Migration 0122_v120a_workspace_level_states: AlterField project
+//     nullable, RemoveConstraint legacy, AlterUniqueTogether vuoto,
+//     AddConstraint x 2. Nessun dato esistente toccato.
+//   - State.save() override: se project_id NULL il caller DEVE passare
+//     workspace esplicito (errore esplicito altrimenti). Sequence
+//     calcolata fra states dello stesso scope (project o shared).
+//   - project/base.py patch: alla creazione di un nuovo progetto,
+//     controlla se esistono State con project=NULL e workspace=questo;
+//     se SI, NON crea i 6 hardcoded DEFAULT_STATES (il progetto usera'
+//     gli shared states). Se NO, comportamento stock (back-compat per
+//     workspace pre-v1.20a).
+//   - Issue.state_id: FK invariata, puo' puntare sia a project state
+//     che a workspace shared state. Niente migration dati richiesta.
+//
+//   Cosa NON fa v1.20a:
+//   - API endpoints CRUD per workspace states (-> v1.20b).
+//   - Frontend store / service / dropdown integration (-> v1.20c).
+//   - UI Workspace Settings + Project Settings toggle (-> v1.20d).
+//
+//   Verifica build:
+//     1. `docker compose ... up -d migrator` deve riuscire (migration
+//        0122 applica senza errori).
+//     2. Creazione di un workspace nuovo + progetto: deve creare i 6
+//        default state (back-compat: nessun shared state esiste ancora).
+//     3. Manualmente via Django shell:
+//        `State.objects.create(name='Test', workspace=ws, project=None)`
+//        deve avere successo.
 //
 // v1.19c: People page - interattivita' completa (stile spreadsheet).
 //   Riscritta la People page (patches/people-page.tsx) per rendere CLICCABILI
@@ -219,7 +261,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.19c";
+const CUSTOM_PATCH_TAG = "PATCHED v1.20a";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states
