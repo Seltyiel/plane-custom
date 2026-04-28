@@ -17,10 +17,34 @@ import { PaidPlanUpgradeModal } from "../license";
 import { Button } from "@plane/propel/button";
 
 // Marker visibile per verificare che la build custom sia quella attiva.
-// Se vedi questo badge "PATCHED v1.22d" accanto a "Community", l'utente
-// puo' creare task workspace-level dalle pagine People, Your Work e
-// Workspace Views (oltre che dalla sidebar) scegliendo la voce "Workspace"
-// in cima al picker progetto del modal Create work item.
+// Se vedi questo badge "PATCHED v1.22e" accanto a "Community", oltre alle
+// feature delle versioni precedenti i task workspace-level mostrano un'icona
+// globo accanto all'identifier in tutte le viste.
+//
+// v1.22e: marker visivo "Workspace task" su IssueIdentifier shared.
+//   - apps/web/ce/components/issues/issue-details/issue-identifier.tsx
+//     Componente shared importato dai 5 layout (list, kanban, calendar,
+//     gantt, spreadsheet) + peek-overview + parent-select + relations +
+//     power-k. Una sola patch copre l'intera UI.
+//     * Confronto projectId vs useProject().workspaceHiddenProjectId.
+//     * Se match: <Tooltip><Globe2/></Tooltip> dopo IdentifierText.
+//     * Tooltip "Workspace task", icona text-tertiary per non rubare
+//       attenzione al titolo. Dimensione 12-14px coerente con la size
+//       prop dell'identifier.
+//
+//   Cosa NON fa v1.22e:
+//   - Background row diverso per task workspace -> sarebbe troppo invasivo.
+//   - Filtro "show only workspace tasks" / "hide workspace tasks" -> nice
+//     to have, posticipato.
+//
+//   Verifica build:
+//     1. Apri /<slug>/workspace-views/<viewId> in qualsiasi layout. Trova
+//        un task del progetto Workspace (identifier WS-N): a destra del
+//        codice "WS-42" deve comparire un'icona globo. Hover -> tooltip
+//        "Workspace task".
+//     2. Stesso comportamento in /<slug>/your-work/, /<slug>/people/
+//        (tree espansa), peek overview di un task workspace.
+//     3. Task di progetti normali NON mostrano l'icona.
 //
 // v1.22d: pulsante "+ Add work item" su pagine workspace-level dove
 //   mancava completamente.
@@ -563,7 +587,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.22d";
+const CUSTOM_PATCH_TAG = "PATCHED v1.22e";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

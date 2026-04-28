@@ -302,6 +302,13 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\06-workspace-tasks\workspace-views-header.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\workspace-views\header.tsx" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.22e: marker visivo "Workspace task" sull'IssueIdentifier shared.
+REM   Aggiunge un'icona Globe + tooltip dopo l'identifier text quando
+REM   projectId === workspaceHiddenProjectId. Una sola patch copre tutti i 5
+REM   layout (list/kanban/calendar/gantt/spreadsheet) + peek-overview + ecc.
+copy /Y "%PATCHES_DIR%\06-workspace-tasks\issue-identifier.tsx" "%PLANE_SRC%\apps\web\ce\components\issues\issue-details\issue-identifier.tsx" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.20b: workspace shared states CRUD endpoints.
 REM   - workspace/state.py: GET (esteso) + POST + WorkspaceStateDetailEndpoint
 REM     (GET/PATCH/DELETE) + WorkspaceStateMarkDefaultEndpoint (POST).
