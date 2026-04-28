@@ -17,10 +17,38 @@ import { PaidPlanUpgradeModal } from "../license";
 import { Button } from "@plane/propel/button";
 
 // Marker visibile per verificare che la build custom sia quella attiva.
-// Se vedi questo badge "PATCHED v1.22b" accanto a "Community", il progetto
-// fittizio "Workspace" e' nascosto dal sidebar Projects e dai picker stock,
-// e c'e' lo store + hook per accedere all'ID del progetto fittizio. La UI
-// del modal Create (voce "Workspace" in cima al picker) arriva con v1.22c.
+// Se vedi questo badge "PATCHED v1.22c" accanto a "Community", l'utente
+// puo' creare task workspace-level scegliendo la voce "Workspace" in cima
+// al picker progetto del modal Create work item.
+//
+// v1.22c: UI modal Create work item con voce "Workspace" (Opzione A).
+//   - apps/web/core/components/dropdowns/project/dropdown.tsx
+//     Concatena workspaceHiddenProjectId (dal store v1.22b) in cima a
+//     joinedProjectIds prima di passarli a ProjectDropdownBase. Il
+//     workspace project compare quindi come prima voce nel picker, con
+//     name "Workspace" e identifier "WS" (gia' visivamente distintivi).
+//   - apps/web/core/components/issues/issue-modal/components/project-select.tsx
+//     1. Chiama useWorkspaceProject() in mount per lazy-fetch del backend
+//        (idempotente get_or_create + sync ProjectMember).
+//     2. renderCondition esteso: il workspace project e' sempre accettato,
+//        anche se non e' in allowedProjectIds (caller non puo' conoscere
+//        l'ID a priori).
+//
+//   Cosa NON fa v1.22c:
+//   - URL alias /<slug>/work-items/<id> -> v1.22d.
+//   - Visualizzazione marker "Workspace task" nelle viste -> v1.22d.
+//   - Distinzione visiva nel dropdown (icona globo + separatore) -> nice
+//     to have, posticipato.
+//
+//   Verifica build:
+//     1. Apri qualsiasi pagina con il pulsante "+ Create work item" (es.
+//        /oniro/your-work, /oniro/workspace-views, sidebar, ecc).
+//     2. Click "+" -> modal apre.
+//     3. Click sul project picker -> "Workspace" appare in cima.
+//     4. Seleziona "Workspace" -> il task viene creato col project_id
+//        del progetto fittizio.
+//     5. Il task creato e' visibile nelle workspace views, your-work, ecc
+//        come tutti gli altri (perche' e' un Issue normale a livello DB).
 //
 // v1.22b: frontend store + service + hook per workspace project (Opzione A).
 //   - packages/types/src/project/projects.ts: IPartialProject.is_hidden
@@ -494,7 +522,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.22b";
+const CUSTOM_PATCH_TAG = "PATCHED v1.22c";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

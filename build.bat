@@ -282,6 +282,15 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\06-workspace-tasks\use-workspace-project.ts" "%PLANE_SRC%\apps\web\core\hooks\use-workspace-project.ts" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.22c: UI modal Create work item con voce Workspace in picker.
+REM   - dropdowns/project/dropdown.tsx: concat workspaceHiddenProjectId in cima.
+REM   - issues/issue-modal/components/project-select.tsx: lazy fetch hook +
+REM     renderCondition esteso per accettare workspace project.
+copy /Y "%PATCHES_DIR%\06-workspace-tasks\project-dropdown.tsx" "%PLANE_SRC%\apps\web\core\components\dropdowns\project\dropdown.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\06-workspace-tasks\issue-modal-project-select.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-modal\components\project-select.tsx" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.20b: workspace shared states CRUD endpoints.
 REM   - workspace/state.py: GET (esteso) + POST + WorkspaceStateDetailEndpoint
 REM     (GET/PATCH/DELETE) + WorkspaceStateMarkDefaultEndpoint (POST).

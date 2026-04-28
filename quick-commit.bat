@@ -71,8 +71,12 @@ echo [1/3] git add .
 git add .
 if errorlevel 1 goto :err
 
-echo [2/3] git commit -m "!COMMIT_MSG!"
-git commit -m "!COMMIT_MSG!"
+echo [2/3] git commit (messaggio via file temporaneo per supportare virgolette)
+REM Scrivo il messaggio in un file temp e uso git commit -F per evitare
+REM problemi con virgolette interne nel messaggio (cmd /-m "..." rompe).
+> "%TEMP%\plane-commit-msg.txt" echo !COMMIT_MSG!
+git commit -F "%TEMP%\plane-commit-msg.txt"
+del /q "%TEMP%\plane-commit-msg.txt" >nul 2>&1
 if errorlevel 1 goto :err
 
 echo [3/3] git push
