@@ -78,9 +78,10 @@ export const BaseSpreadsheetRoot = observer(function BaseSpreadsheetRoot(props: 
   // derived values
   const { enableInlineEditing, enableQuickAdd, enableIssueCreation } = issues?.viewFlags || {};
   // user role validation
+  // PATCH v1.23a: WORKSPACE level fallback in workspace context.
   const isEditingAllowed = allowPermissions(
     [EUserPermissions.ADMIN, EUserPermissions.MEMBER],
-    EUserPermissionsLevel.PROJECT
+    projectId ? EUserPermissionsLevel.PROJECT : EUserPermissionsLevel.WORKSPACE
   );
 
   useEffect(() => {

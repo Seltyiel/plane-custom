@@ -17,9 +17,78 @@ import { PaidPlanUpgradeModal } from "../license";
 import { Button } from "@plane/propel/button";
 
 // Marker visibile per verificare che la build custom sia quella attiva.
-// Se vedi questo badge "PATCHED v1.22e" accanto a "Community", oltre alle
-// feature delle versioni precedenti i task workspace-level mostrano un'icona
-// globo accanto all'identifier in tutte le viste.
+// Se vedi questo badge "PATCHED v1.23" accanto a "Community", oltre alle
+// feature delle versioni precedenti il quick-add inline funziona ora anche
+// in Workspace Views, Your Work, Calendar workspace.
+//
+// v1.23b (hotfix #2): Calendar quick-add hover su celle.
+//   Stock calendar/quick-add-issue-actions.tsx riga 82 ha
+//     if (!projectId) return null;
+//   che bloccava il menu hover "+" sulle celle del calendar in workspace
+//   context. Patch:
+//   - Rimosso il return null. Il QuickAddIssueRoot child gia' gestisce il
+//     fallback workspaceHiddenProjectId (patch v1.23).
+//   - Menu item "Add existing" nascosto in workspace context (richiede un
+//     projectId per filtrare).
+//   In project context tutto resta identico allo stock.
+//
+// v1.23a (hotfix): isEditingAllowed con WORKSPACE level fallback nei 5
+//   base-root quando l'URL non porta projectId. Senza, il quick-add restava
+//   filtrato a monte: list-group/kanban-group/calendar/gantt/spreadsheet
+//   filtrano `!disableIssueCreation` dove disableIssueCreation =
+//   isEditingAllowed === false. allowPermissions(...PROJECT) ritorna false
+//   se non c'e' projectId nello store router -> il quick-add v1.23 non
+//   diventava mai visibile in workspace views/Your Work.
+//   Fix: nei 5 base-root scegliamo dinamicamente il level
+//     `projectId ? PROJECT : WORKSPACE`
+//   cosi' la check passa anche in workspace context.
+//
+// v1.23: quick-add inline su workspace views + Your Work.
+//   Il sistema stock di quick-add (apps/web/core/components/issues/
+//   issue-layouts/quick-add/) era completo per project views ma escluso
+//   da workspace views e profile per 3 ragioni:
+//     a) QuickAddIssueRoot esce con `if (!projectId) return null` perche'
+//        legge solo URL (assenti workspace context).
+//     b) WorkspaceIssues e ProfileIssues store hanno `quickAddIssue =
+//        undefined` esplicito per disabilitare il quick-add.
+//     c) useGlobalIssueActions e useProfileIssueActions non espongono
+//        quickAddIssue.
+//
+//   Patch:
+//     - quick-add/root.tsx: resolvedProjectId = URL ?? prePopulatedData
+//       ?? workspaceHiddenProjectId. Lazy fetch via useWorkspaceProject().
+//     - workspace/issue.store.ts: quickAddIssue = this.issueQuickAdd
+//       (la logica e' gia' in BaseIssuesStore).
+//     - profile/issue.store.ts: enableQuickAdd:true su assigned/created
+//       (subscribed off) + quickAddIssue = this.issueQuickAdd.
+//     - hooks/use-issues-actions.tsx: nuovo quickAddIssue in
+//       useGlobalIssueActions + useProfileIssueActions. Profile/assigned
+//       auto-aggiunge userId a assignee_ids per non perdere il task dal
+//       filtro server-side.
+//
+//   Default project per quick-add in workspace context: il "Workspace"
+//   project fittizio (workspaceHiddenProjectId). Se l'utente vuole
+//   scegliere un project specifico, usa il pulsante "+ Add work item"
+//   v1.22d (apre modal completo con picker).
+//
+//   Verifica build:
+//     1. /<slug>/workspace-views/<viewId> in Calendar layout: hover su
+//        una cella vuota -> appare il pulsante "+", click -> input inline.
+//        Tipo titolo, Enter -> task creato col target_date di quella cella
+//        e project_id = workspace project.
+//     2. Stesso flusso in List, Kanban, Spreadsheet, Gantt workspace.
+//     3. /<slug>/profile/<myId>/assigned: stesso pattern. Verifica che
+//        il task creato sia auto-assegnato a current user (cosi' resta
+//        visibile nella vista dopo il refresh).
+//     4. /<slug>/profile/<myId>/subscribed: il pulsante quick-add NON
+//        deve apparire (enableQuickAdd:false intenzionale).
+//     5. Project views invariate: il quick-add deve continuare a
+//        funzionare come prima.
+//
+//   Cosa NON fa v1.23:
+//   - Move task fra progetti (es. da Workspace a un project reale): e'
+//     v1.24 (richiesta esplicita di Ciro per gestire i quick-add nel
+//     posto sbagliato). Backend endpoint + UI dedicata.
 //
 // v1.22e: marker visivo "Workspace task" su IssueIdentifier shared.
 //   - apps/web/ce/components/issues/issue-details/issue-identifier.tsx
@@ -587,7 +656,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.22e";
+const CUSTOM_PATCH_TAG = "PATCHED v1.23b";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

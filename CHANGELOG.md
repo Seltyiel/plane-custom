@@ -6,6 +6,49 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.23b] - 2026-04-28 (hotfix #2)
+
+### Modificato
+- `calendar/quick-add-issue-actions.tsx`: rimosso `if (!projectId) return null` (riga 82). Il `QuickAddIssueRoot` child gia' gestisce il fallback `workspaceHiddenProjectId` da v1.23, quindi il menu hover "+" sulle celle del calendar funziona ora in workspace views.
+- Menu item "Add existing" nascosto in workspace context (richiede un `projectId` per filtrare la lista issue).
+
+### Note
+- Workspace Calendar ora ha lo stesso behavior del project Calendar: hover su una cella → "+" inline → click "Add new" → form inline → titolo + Enter → task creato con `target_date` di quella cella e `project_id = workspaceHiddenProjectId`.
+- Gantt/Timeline workspace: niente file nuovo. Il fix v1.23a su `isAllowed` dovrebbe gia' aver sbloccato drag/click/handle.
+
+---
+
+## [v1.23a] - 2026-04-28 (hotfix)
+
+### Modificato
+- `base-list-root`, `base-kanban-root`, `base-spreadsheet-root`, `base-gantt-root`, `base-calendar-root`: `isEditingAllowed` ora usa `projectId ? PROJECT : WORKSPACE` come permission level. Senza questo, in workspace context (URL senza `projectId`) il check `allowPermissions(..., PROJECT)` ritornava sempre false → `disableIssueCreation = true` → `list-group.tsx` (e altri) filtravano via il `<QuickAddIssueRoot>` a monte di tutta la logica v1.23.
+- `base-calendar-root`: aggiunto `projectId` alla destructure di `useParams()` (era stata omessa nello stock perche' non serviva).
+
+### Note
+- Bug scoperto post-build: marker v1.23 visibile, store/hook/root patchati correttamente, ma il quick-add restava invisibile. Il filtro `!disableIssueCreation` in `list-group.tsx` riga 328 nasconde il root prima ancora che possa decidere di renderizzarsi.
+
+---
+
+## [v1.23] - 2026-04-28
+
+### Aggiunto
+- **Quick-add inline** ora disponibile su Workspace Views (List/Kanban/Calendar/Gantt/Spreadsheet) e Your Work (assigned/created). Default project = Workspace fittizio.
+- `QuickAddIssueRoot`: `resolvedProjectId = URL ?? prePopulatedData ?? workspaceHiddenProjectId`. Lazy fetch SWR via `useWorkspaceProject()` se non gia' nel store.
+- `useGlobalIssueActions` e `useProfileIssueActions`: ora espongono `quickAddIssue`.
+- Profile/`assigned`: auto-add `userId` a `assignee_ids` per non perdere il task dal filtro server-side.
+
+### Modificato
+- `WorkspaceIssues.quickAddIssue`: era `undefined` -> ora bind a `this.issueQuickAdd` (la logica e' gia' in `BaseIssuesStore`).
+- `ProfileIssues.viewFlags`: `enableQuickAdd: true` per `assigned`/`created` (era false). `subscribed` resta off.
+- `ProfileIssues.quickAddIssue`: era `undefined` -> ora bind a `this.issueQuickAdd`.
+
+### Note
+- Project views invariate: quick-add stock continua a funzionare come prima.
+- Per scegliere un project diverso dal Workspace: pulsante "+ Add work item" v1.22d (modal completo con picker).
+- Move task fra progetti (per quick-add nel posto sbagliato): arriva con v1.24.
+
+---
+
 ## [v1.22e] - 2026-04-28
 
 ### Aggiunto

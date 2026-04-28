@@ -109,7 +109,11 @@ export const BaseGanttRoot = observer(function BaseGanttRoot(props: IBaseGanttRo
     updateIssue && (await updateIssue(issue.project_id, issue.id, payload));
   };
 
-  const isAllowed = allowPermissions([EUserPermissions.ADMIN, EUserPermissions.MEMBER], EUserPermissionsLevel.PROJECT);
+  // PATCH v1.23a: WORKSPACE level fallback in workspace context.
+  const isAllowed = allowPermissions(
+    [EUserPermissions.ADMIN, EUserPermissions.MEMBER],
+    projectId ? EUserPermissionsLevel.PROJECT : EUserPermissionsLevel.WORKSPACE
+  );
   const updateBlockDates = useCallback(
     (
       updates: {

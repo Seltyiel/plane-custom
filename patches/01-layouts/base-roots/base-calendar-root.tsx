@@ -69,7 +69,8 @@ export const BaseCalendarRoot = observer(function BaseCalendarRoot(props: IBaseC
   } = props;
 
   // router
-  const { workspaceSlug } = useParams();
+  // PATCH v1.23a: aggiunto projectId per il fallback permission level.
+  const { workspaceSlug, projectId } = useParams();
 
   // hooks
   const fallbackStoreType = useIssueStoreType() as CalendarStoreType;
@@ -90,9 +91,10 @@ export const BaseCalendarRoot = observer(function BaseCalendarRoot(props: IBaseC
 
   const issueCalendarView = useCalendarView();
 
+  // PATCH v1.23a: WORKSPACE level fallback in workspace context.
   const isEditingAllowed = allowPermissions(
     [EUserPermissions.ADMIN, EUserPermissions.MEMBER],
-    EUserPermissionsLevel.PROJECT
+    projectId ? EUserPermissionsLevel.PROJECT : EUserPermissionsLevel.WORKSPACE
   );
 
   const { enableInlineEditing } = issues?.viewFlags || {};

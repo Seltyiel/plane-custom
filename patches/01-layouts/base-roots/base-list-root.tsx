@@ -132,9 +132,14 @@ export const BaseListRoot = observer(function BaseListRoot(props: IBaseListRoot)
 
   const groupedIssueIds = issues?.groupedIssueIds as TGroupedIssues | undefined;
 
+  // PATCH v1.23a: in workspace context (URL senza projectId, es. workspace
+  // views o profile) allowPermissions(..., PROJECT) ritorna sempre false
+  // -> disableIssueCreation=true -> list-group.tsx riga 327-331 NON
+  // renderizza il QuickAddIssueRoot. Fallback a WORKSPACE level se l'URL
+  // non porta un project corrente.
   const isEditingAllowed = allowPermissions(
     [EUserPermissions.ADMIN, EUserPermissions.MEMBER],
-    EUserPermissionsLevel.PROJECT
+    projectId ? EUserPermissionsLevel.PROJECT : EUserPermissionsLevel.WORKSPACE
   );
   const { enableInlineEditing, enableQuickAdd, enableIssueCreation } = issues?.viewFlags || {};
 

@@ -309,6 +309,31 @@ REM   layout (list/kanban/calendar/gantt/spreadsheet) + peek-overview + ecc.
 copy /Y "%PATCHES_DIR%\06-workspace-tasks\issue-identifier.tsx" "%PLANE_SRC%\apps\web\ce\components\issues\issue-details\issue-identifier.tsx" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.23: quick-add inline ovunque (workspace views + Your Work).
+REM   - quick-add/root.tsx: fallback al workspaceHiddenProjectId quando URL
+REM     non porta projectId. Lazy fetch SWR del workspace project.
+REM   - workspace/issue.store.ts: quickAddIssue = this.issueQuickAdd
+REM     (era undefined per disabilitare il quick-add a livello workspace).
+REM   - profile/issue.store.ts: enableQuickAdd:true su assigned/created
+REM     (subscribed resta off) + quickAddIssue = this.issueQuickAdd.
+REM   - hooks/use-issues-actions.tsx: espone quickAddIssue in
+REM     useGlobalIssueActions e useProfileIssueActions, con auto-assign su
+REM     profile/assigned (assignees=userId server-side filter).
+copy /Y "%PATCHES_DIR%\07-quick-add\quick-add-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\quick-add\root.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\07-quick-add\workspace-issue-store.ts" "%PLANE_SRC%\apps\web\core\store\issue\workspace\issue.store.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\07-quick-add\profile-issue-store.ts" "%PLANE_SRC%\apps\web\core\store\issue\profile\issue.store.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\07-quick-add\use-issues-actions.tsx" "%PLANE_SRC%\apps\web\core\hooks\use-issues-actions.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.23b: sblocca il menu hover "+" sulle celle del Calendar in
+REM workspace context. Stock riga 82 ha if(!projectId) return null che
+REM blocca il pulsante quick-add inline su ogni day-tile.
+copy /Y "%PATCHES_DIR%\07-quick-add\calendar-quick-add-issue-actions.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\calendar\quick-add-issue-actions.tsx" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.20b: workspace shared states CRUD endpoints.
 REM   - workspace/state.py: GET (esteso) + POST + WorkspaceStateDetailEndpoint
 REM     (GET/PATCH/DELETE) + WorkspaceStateMarkDefaultEndpoint (POST).
