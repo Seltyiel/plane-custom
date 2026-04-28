@@ -17,9 +17,43 @@ import { PaidPlanUpgradeModal } from "../license";
 import { Button } from "@plane/propel/button";
 
 // Marker visibile per verificare che la build custom sia quella attiva.
-// Se vedi questo badge "PATCHED v1.22a" accanto a "Community", l'utente
-// puo' creare task workspace-level (no progetto specifico) tramite il
-// progetto fittizio "Workspace" auto-creato.
+// Se vedi questo badge "PATCHED v1.22b" accanto a "Community", il progetto
+// fittizio "Workspace" e' nascosto dal sidebar Projects e dai picker stock,
+// e c'e' lo store + hook per accedere all'ID del progetto fittizio. La UI
+// del modal Create (voce "Workspace" in cima al picker) arriva con v1.22c.
+//
+// v1.22b: frontend store + service + hook per workspace project (Opzione A).
+//   - packages/types/src/project/projects.ts: IPartialProject.is_hidden
+//     opzionale (riflette il backend Project.is_hidden v1.22a).
+//   - apps/web/core/store/project/project.store.ts:
+//     * Filtri 4 getter (workspaceProjectIds, joinedProjectIds,
+//       archivedProjectIds, favoriteProjectIds, e quello che alimenta
+//       il sidebar via shouldFilterProject) per escludere progetti
+//       is_hidden.
+//     * Nuovo getter workspaceHiddenProjectId che ritorna l'ID del
+//       progetto fittizio per il workspace corrente (se gia' nel
+//       projectMap; altrimenti undefined - chiamare hook dedicato).
+//   - apps/web/core/services/workspace-project.service.ts (nuovo):
+//     WorkspaceProjectService.getWorkspaceProject(slug) consume
+//     l'endpoint backend v1.22a (lazy get_or_create idempotente).
+//   - apps/web/core/hooks/use-workspace-project.ts (nuovo):
+//     useWorkspaceProject() hook SWR-based, dedup automatico delle
+//     chiamate concorrenti. Ritorna {workspaceProject, isLoading,
+//     error}.
+//
+//   Cosa NON fa v1.22b:
+//   - UI modal Create work item con voce "Workspace" -> v1.22c.
+//   - Visualizzazione marker "Workspace task" nelle viste -> v1.22c.
+//   - Route /<slug>/work-items/<id> -> v1.22d.
+//
+//   Verifica build:
+//     1. App carica normalmente, niente errori TS.
+//     2. Sidebar Projects: il progetto "Workspace" non appare piu' (era
+//        gia' creato in v1.22a verify).
+//     3. Console DevTools: useWorkspaceProject() ritorna l'oggetto
+//        atteso. Da console:
+//        await fetch('/api/workspaces/oniro/workspace-project/').then(r=>r.json())
+//        Aspettativa: {id, name: "Workspace", identifier: "WS", is_hidden: true}.
 //
 // v1.22a: backend foundation per task workspace-level (Opzione A).
 //   - Project.is_hidden BooleanField (default False) + migration 0123.
@@ -460,7 +494,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.22a";
+const CUSTOM_PATCH_TAG = "PATCHED v1.22b";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

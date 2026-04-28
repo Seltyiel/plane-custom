@@ -199,6 +199,11 @@ class ProjectViewSet(BaseViewSet):
             "updated_at",
             "created_by",
             "updated_by",
+            # PATCH (plane-custom) v1.22b: serializzare is_hidden anche nel
+            # list lite (.values(...)). Senza, il frontend riceve oggetti
+            # senza is_hidden, il filter !is_hidden ritorna true (undefined
+            # falsy) e il progetto fittizio viene mostrato in sidebar.
+            "is_hidden",
         )
 
         if WorkspaceMember.objects.filter(

@@ -268,6 +268,20 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\03-backend\api-workspace-project-endpoint.py" "%PLANE_SRC%\apps\api\plane\app\views\workspace\workspace_project.py" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.22b: frontend store + service + hook per workspace project fittizio.
+REM   - types/project: IPartialProject.is_hidden
+REM   - project store: filter is_hidden + getter workspaceHiddenProjectId
+REM   - service WorkspaceProjectService.getWorkspaceProject
+REM   - hook useWorkspaceProject (SWR-based)
+copy /Y "%PATCHES_DIR%\06-workspace-tasks\types-project-projects.ts" "%PLANE_SRC%\packages\types\src\project\projects.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\06-workspace-tasks\project-store.ts" "%PLANE_SRC%\apps\web\core\store\project\project.store.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\06-workspace-tasks\workspace-project-service.ts" "%PLANE_SRC%\apps\web\core\services\workspace-project.service.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\06-workspace-tasks\use-workspace-project.ts" "%PLANE_SRC%\apps\web\core\hooks\use-workspace-project.ts" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.20b: workspace shared states CRUD endpoints.
 REM   - workspace/state.py: GET (esteso) + POST + WorkspaceStateDetailEndpoint
 REM     (GET/PATCH/DELETE) + WorkspaceStateMarkDefaultEndpoint (POST).
