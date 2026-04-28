@@ -291,6 +291,17 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\06-workspace-tasks\issue-modal-project-select.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-modal\components\project-select.tsx" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.22d: pulsante "+ Add work item" su pagine workspace-level.
+REM   - profile/[userId]/header.tsx: pulsante in Header.RightItem (Your Work).
+REM   - workspace-views/header.tsx: pulsante prima di "Add view".
+REM   - people/header.tsx: e' gia' applicata in patches/04-people-page (full
+REM     replacement) -> il copy della versione v1.22d-aware avviene piu' giu'
+REM     nel blocco People page. Niente da fare qui.
+copy /Y "%PATCHES_DIR%\06-workspace-tasks\profile-userid-header.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\profile\[userId]\header.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\06-workspace-tasks\workspace-views-header.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\workspace-views\header.tsx" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.20b: workspace shared states CRUD endpoints.
 REM   - workspace/state.py: GET (esteso) + POST + WorkspaceStateDetailEndpoint
 REM     (GET/PATCH/DELETE) + WorkspaceStateMarkDefaultEndpoint (POST).

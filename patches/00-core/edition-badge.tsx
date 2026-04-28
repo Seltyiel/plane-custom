@@ -17,9 +17,50 @@ import { PaidPlanUpgradeModal } from "../license";
 import { Button } from "@plane/propel/button";
 
 // Marker visibile per verificare che la build custom sia quella attiva.
-// Se vedi questo badge "PATCHED v1.22c" accanto a "Community", l'utente
-// puo' creare task workspace-level scegliendo la voce "Workspace" in cima
-// al picker progetto del modal Create work item.
+// Se vedi questo badge "PATCHED v1.22d" accanto a "Community", l'utente
+// puo' creare task workspace-level dalle pagine People, Your Work e
+// Workspace Views (oltre che dalla sidebar) scegliendo la voce "Workspace"
+// in cima al picker progetto del modal Create work item.
+//
+// v1.22d: pulsante "+ Add work item" su pagine workspace-level dove
+//   mancava completamente.
+//   - apps/web/app/(all)/[workspaceSlug]/(projects)/people/header.tsx
+//     Header.RightItem: <Button primary> "Add work item" che chiama
+//     toggleCreateIssueModal(true, EIssuesStoreType.PROJECT, undefined).
+//     Il modal globale (montato in WorkItemLevelModals al livello layout)
+//     riceve allowedProjectIds=undefined e mostra tutti i project +
+//     il "Workspace" project in cima (v1.22c).
+//   - apps/web/app/(all)/[workspaceSlug]/(projects)/profile/[userId]/header.tsx
+//     ("Your Work"): stesso pulsante in Header.RightItem accanto al
+//     ProfileIssuesFilter.
+//   - apps/web/app/(all)/[workspaceSlug]/(projects)/workspace-views/header.tsx
+//     (Workspace Views): pulsante prima di "Add view" gia' esistente.
+//   - apps/web/core/store/project/project.store.ts: aggiunto
+//     workspaceHiddenProjectId all'INTERFACE IProjectStore (era solo
+//     nella class implementation -> i consumer tipati non compilavano).
+//
+//   Permission gate: ADMIN/MEMBER del workspace (allowPermissions). Il
+//   pulsante e' disabilitato se: non hai permessi, oppure non hai progetti
+//   joined NE' un workspace project (caso edge).
+//
+//   Cosa NON fa v1.22d:
+//   - URL alias /<slug>/work-items/<id> -> v1.22e (se serve).
+//   - Visualizzazione marker "Workspace task" nelle viste -> nice to have,
+//     posticipato.
+//   - Pulsante su Calendar standalone workspace (se esiste come pagina
+//     separata): non identificata come pagina mancante nel feedback.
+//
+//   Verifica build:
+//     1. Vai su /<slug>/people: a destra dell'header c'e' "+ Add work item"
+//        primary. Click -> modal apre.
+//     2. Vai su /<slug>/profile/<myUserId>: stesso pulsante a destra del
+//        filter. Click -> modal apre.
+//     3. Vai su /<slug>/workspace-views/<viewId>: pulsante "+ Add work
+//        item" prima di "Add view". Click -> modal apre.
+//     4. Nel modal scegli "Workspace" dal picker progetto -> task creato
+//        col project_id del workspace project.
+//     5. Il task creato compare nella view corrente (se i filtri lo
+//        ammettono).
 //
 // v1.22c: UI modal Create work item con voce "Workspace" (Opzione A).
 //   - apps/web/core/components/dropdowns/project/dropdown.tsx
@@ -522,7 +563,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.22c";
+const CUSTOM_PATCH_TAG = "PATCHED v1.22d";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

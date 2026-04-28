@@ -40,6 +40,9 @@ export interface IProjectStore {
   totalProjectIds: string[] | undefined;
   joinedProjectIds: string[];
   favoriteProjectIds: string[];
+  // PATCH v1.22d: esposto sull'interfaccia (era solo nella class) cosi'
+  // i consumer tipati (es. useProject().workspaceHiddenProjectId) compilano.
+  workspaceHiddenProjectId: string | undefined;
   currentProjectDetails: TProject | undefined;
   currentProjectNextSequenceId: number | undefined;
   // actions
