@@ -17,9 +17,43 @@ import { PaidPlanUpgradeModal } from "../license";
 import { Button } from "@plane/propel/button";
 
 // Marker visibile per verificare che la build custom sia quella attiva.
-// Se vedi questo badge "PATCHED v1.21" accanto a "Community", l'utente puo'
-// fare drag-and-drop di task fra colonne state-group anche in workspace
-// views / your-work / profile (prima il toast bloccava).
+// Se vedi questo badge "PATCHED v1.22a" accanto a "Community", l'utente
+// puo' creare task workspace-level (no progetto specifico) tramite il
+// progetto fittizio "Workspace" auto-creato.
+//
+// v1.22a: backend foundation per task workspace-level (Opzione A).
+//   - Project.is_hidden BooleanField (default False) + migration 0123.
+//     Quando is_hidden=True, il progetto e' "fittizio" e serve solo da
+//     contenitore per task workspace-level. Il frontend lo nasconde da
+//     sidebar/picker.
+//   - Endpoint GET /api/workspaces/<slug>/workspace-project/
+//     - Cerca un Project con workspace=ws e is_hidden=True; se non
+//       esiste, lo crea con name="Workspace", identifier="WS"
+//       (con suffisso numerico se collide), network=Secret, tutte
+//       le features disabilitate (cycle/module/intake/page/views OFF).
+//     - Crea i 6 default state per il progetto fittizio (skip se il
+//       workspace ha gia' shared states v1.20a).
+//     - Sincronizza ProjectMember col WorkspaceMember (additivo,
+//       idempotente).
+//   - Permission: WorkspaceEntityPermission.
+//   - Atomicita': transaction.atomic per evitare race condition.
+//
+//   Cosa NON fa v1.22a:
+//   - Frontend integration: nessun consumer ancora. La voce "Workspace"
+//     nel picker arriva con v1.22b/c. La gestione is_hidden nel store
+//     project arriva con v1.22b.
+//   - URL alias /<slug>/work-items/<id>: arriva con v1.22 milestone
+//     finale (alias che redirect a /projects/<workspaceProjectId>/issues/<id>).
+//
+//   Verifica build:
+//     1. Migration 0123 applicata.
+//     2. GET /api/workspaces/oniro/workspace-project/ ritorna
+//        {id, name: "Workspace", identifier: "WS", is_hidden: true}.
+//     3. Al primo GET, il progetto viene creato. Al secondo, riusato
+//        (idempotente).
+//     4. Tutti gli workspace member sono ProjectMember del progetto.
+//     5. Il progetto NON appare nel sidebar Projects (frontend filter
+//        arrivera' in v1.22b; per ora puoi temporaneamente vederlo).
 //
 // v1.21: Drag-and-drop su "state_detail.group" group_by.
 //   - constants/issue/common.ts: aggiunto "state_detail.group" a
@@ -426,7 +460,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.21";
+const CUSTOM_PATCH_TAG = "PATCHED v1.22a";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

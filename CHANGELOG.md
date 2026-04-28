@@ -6,6 +6,25 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.22a] - 2026-04-28
+
+### Aggiunto
+- **Foundation backend per task workspace-level** (Opzione A: progetto fittizio).
+- `Project.is_hidden` BooleanField default False, db_index. Marca i progetti "fittizi" (non visibili da sidebar/picker).
+- Migration `0123_v122a_project_is_hidden`.
+- Endpoint `GET /api/workspaces/<slug>/workspace-project/` — lazy `get_or_create` del progetto fittizio "Workspace":
+  - name `"Workspace"`, identifier `"WS"` (con suffisso numerico se collide), network Secret, features cycle/module/intake/page/views disabilitate.
+  - Crea i 6 default state (skip se workspace ha shared states v1.20a).
+  - Sincronizza `ProjectMember` con `WorkspaceMember` attivi (additivo + idempotente).
+  - Atomicita' via `transaction.atomic` (evita race condition).
+- Permission: `WorkspaceEntityPermission`.
+
+### Note
+- Step successivi: v1.22b (frontend store filter is_hidden + workspaceProjectId hook), v1.22c (UI Create modal con voce "Workspace" in cima al picker), v1.22d (URL alias `/work-items/<id>` + visualizzazione marker workspace task).
+- Approccio scelto: progetto fittizio invece di `Issue.project_id NULL` per evitare refactor profondo (5+ aree backend, ~10 file, 4 migration). Costo stimato 1-2 giorni vs 5-7 giorni del refactor puro.
+
+---
+
 ## [v1.21] - 2026-04-28
 
 ### Aggiunto

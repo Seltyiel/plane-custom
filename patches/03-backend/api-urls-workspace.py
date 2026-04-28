@@ -72,6 +72,10 @@ from plane.app.views.workspace.state import (
     WorkspaceStateMarkDefaultEndpoint,
 )
 
+# PATCH v1.22a - endpoint workspace-project (lazy get_or_create del progetto
+# fittizio "Workspace" per task workspace-level - Opzione A v1.22).
+from plane.app.views.workspace.workspace_project import WorkspaceProjectEndpoint
+
 
 urlpatterns = [
     path(
@@ -228,6 +232,12 @@ urlpatterns = [
         "workspaces/<str:slug>/states/<uuid:pk>/mark-default/",
         WorkspaceStateMarkDefaultEndpoint.as_view(),
         name="workspace-state-mark-default",
+    ),
+    # PATCH v1.22a: workspace fictitious project (lazy get_or_create).
+    path(
+        "workspaces/<str:slug>/workspace-project/",
+        WorkspaceProjectEndpoint.as_view(),
+        name="workspace-project",
     ),
     path(
         "workspaces/<str:slug>/estimates/",

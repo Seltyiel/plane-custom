@@ -257,6 +257,17 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\03-backend\app-serializers-draft.py" "%PLANE_SRC%\apps\api\plane\app\serializers\draft.py" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.22a: progetto "Workspace" fittizio (Opzione A workspace-level tasks).
+REM   - Project.is_hidden field + migration 0123.
+REM   - Endpoint /api/workspaces/<slug>/workspace-project/ con lazy
+REM     get_or_create + sync ProjectMember.
+copy /Y "%PATCHES_DIR%\03-backend\project-model.py" "%PLANE_SRC%\apps\api\plane\db\models\project.py" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\03-backend\migration-0123-project-is-hidden.py" "%PLANE_SRC%\apps\api\plane\db\migrations\0123_v122a_project_is_hidden.py" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\03-backend\api-workspace-project-endpoint.py" "%PLANE_SRC%\apps\api\plane\app\views\workspace\workspace_project.py" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.20b: workspace shared states CRUD endpoints.
 REM   - workspace/state.py: GET (esteso) + POST + WorkspaceStateDetailEndpoint
 REM     (GET/PATCH/DELETE) + WorkspaceStateMarkDefaultEndpoint (POST).
@@ -422,9 +433,16 @@ REM -------------------------------------------------------
 echo [6/6] Riavviando Plane (web + api + worker)...
 
 pushd "%PROJECT_DIR%..\plane-app"
+REM PATCH v1.22a: aggiunto "migrator" al restart per applicare migration nuove
+REM dopo build delle immagini API. Senza, il migrator restava in stato
+REM Exited(0) della run precedente e le migration non venivano applicate.
+REM 'restart: on-failure' nel compose impedisce auto-rerun ma permette il
+REM manual restart che facciamo qui.
 if exist "plane.env" (
+    docker compose --env-file plane.env up -d --no-deps migrator
     docker compose --env-file plane.env up -d --no-deps web api worker beat-worker
 ) else (
+    docker compose up -d --no-deps migrator
     docker compose up -d --no-deps web api worker beat-worker
 )
 popd

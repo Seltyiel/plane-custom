@@ -12,6 +12,8 @@ container-serializer.txt
 issue-patch-flow.txt
 state-validations.txt
 utils-handle-dump.txt
+migrations-state.txt
+verify-v122a-output.txt
 
 # Python bytecode (artefatto di test/import script)
 __pycache__/
