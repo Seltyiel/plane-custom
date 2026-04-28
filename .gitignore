@@ -5,6 +5,14 @@ diagnostic.log
 diagnostic_old.log
 *.log
 
+# Dump diagnostici prodotti da dump-*.bat (rumore + potenzialmente sensibili).
+# Gli script dump-*.bat invece SONO tracciati (sono tool utili).
+api-logs.txt
+container-serializer.txt
+issue-patch-flow.txt
+state-validations.txt
+utils-handle-dump.txt
+
 # Python bytecode (artefatto di test/import script)
 __pycache__/
 *.pyc

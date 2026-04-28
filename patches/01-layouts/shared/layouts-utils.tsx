@@ -613,6 +613,19 @@ const getGroupId = (groupId: string) => {
   return [groupId];
 };
 
+/**
+ * PATCH (plane-custom) v1.21:
+ *  Quando groupBy === "state_detail.group", il drop su un group "started" /
+ *  "backlog" / ... non e' direttamente settabile su Issue (state__group e'
+ *  derivato dallo state, non un field aggiornabile). Serve un lookup degli
+ *  state del progetto del task per trovare uno con quel group e settare
+ *  state_id su quello.
+ *
+ *  Per fare il lookup utils non puo' importare il store (sarebbe ciclo).
+ *  Il caller (BaseListRoot, ecc.) passa getStatesByProject opzionale.
+ *  Se non passato e groupBy e' "state_detail.group", il drop fallisce
+ *  silenziosamente.
+ */
 export const handleGroupDragDrop = async (
   source: GroupDropLocation,
   destination: GroupDropLocation,
@@ -621,7 +634,9 @@ export const handleGroupDragDrop = async (
   updateIssueOnDrop: (projectId: string, issueId: string, data: Partial<TIssue>, issueUpdates: IssueUpdates) => void,
   groupBy: TIssueGroupByOptions | undefined,
   subGroupBy: TIssueGroupByOptions | undefined,
-  shouldAddIssueAtTop = false
+  shouldAddIssueAtTop = false,
+  // PATCH v1.21: lookup degli state del progetto per resolve "state_detail.group" -> state_id
+  getStatesByProject?: (projectId: string) => Array<{ id: string; group: string }> | undefined
 ) => {
   if (!source.id || (subGroupBy && (!source.subGroupId || !destination.subGroupId))) return;
 
@@ -652,21 +667,52 @@ export const handleGroupDragDrop = async (
 
   // update updatedIssue values based on the source and destination groupIds
   if (source.groupId && destination.groupId && source.groupId !== destination.groupId && groupBy) {
-    const groupKey = ISSUE_FILTER_DEFAULT_DATA[groupBy];
-    let groupValue: any = clone(sourceIssue[groupKey]);
+    // PATCH v1.21: special handling per "state_detail.group" - resolve a state_id.
+    if (groupBy === "state_detail.group") {
+      const projectId = sourceIssue.project_id;
+      if (projectId && destination.groupId !== "None" && getStatesByProject) {
+        const projectStates = getStatesByProject(projectId) || [];
+        const targetState = projectStates.find((s) => s.group === destination.groupId);
+        if (targetState) {
+          // Aggiorna state_id (la chiave usata dall'API).
+          // Aggiorna ANCHE state__group nel locale: il workspace Kanban
+          // bucketta per state__group, quindi senza questo aggiornamento
+          // il client patcha state_id ma la UI Kanban resta nella vecchia
+          // colonna (l'optimistic update di updateIssueList confronta
+          // before/after su state__group e non vede differenza).
+          updatedIssue = {
+            ...updatedIssue,
+            state_id: targetState.id,
+            state__group: destination.groupId,
+          } as Partial<TIssue>;
+          issueUpdates["state_id"] = {
+            ADD: [targetState.id],
+            REMOVE: sourceIssue.state_id ? [sourceIssue.state_id] : [],
+          };
+          issueUpdates["state__group"] = {
+            ADD: [destination.groupId],
+            REMOVE: source.groupId ? [source.groupId] : [],
+          };
+        }
+        // Se nessuno state matcha (improbabile), il drop si limita a sortOrder.
+      }
+    } else {
+      const groupKey = ISSUE_FILTER_DEFAULT_DATA[groupBy];
+      let groupValue: any = clone(sourceIssue[groupKey]);
 
-    // If groupValues is an array, remove source groupId and add destination groupId
-    if (Array.isArray(groupValue)) {
-      pull(groupValue, source.groupId);
-      if (destination.groupId !== "None") groupValue = uniq(concat(groupValue, [destination.groupId]));
-    } // else just update the groupValue based on destination groupId
-    else {
-      groupValue = destination.groupId === "None" ? null : destination.groupId;
+      // If groupValues is an array, remove source groupId and add destination groupId
+      if (Array.isArray(groupValue)) {
+        pull(groupValue, source.groupId);
+        if (destination.groupId !== "None") groupValue = uniq(concat(groupValue, [destination.groupId]));
+      } // else just update the groupValue based on destination groupId
+      else {
+        groupValue = destination.groupId === "None" ? null : destination.groupId;
+      }
+
+      // keep track of updates on what was added and what was removed
+      issueUpdates[groupKey] = { ADD: getGroupId(destination.groupId), REMOVE: getGroupId(source.groupId) };
+      updatedIssue = { ...updatedIssue, [groupKey]: groupValue };
     }
-
-    // keep track of updates on what was added and what was removed
-    issueUpdates[groupKey] = { ADD: getGroupId(destination.groupId), REMOVE: getGroupId(source.groupId) };
-    updatedIssue = { ...updatedIssue, [groupKey]: groupValue };
   }
 
   // do the same for subgroup

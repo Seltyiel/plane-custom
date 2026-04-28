@@ -294,6 +294,11 @@ export const coreRoutes: RouteConfigEntry[] = [
             ":workspaceSlug/settings/webhooks/:webhookId",
             "./(all)/[workspaceSlug]/(settings)/settings/(workspace)/webhooks/[webhookId]/page.tsx"
           ),
+          // PATCH v1.20d: Workspace Settings -> States (workspace shared states CRUD UI)
+          route(
+            ":workspaceSlug/settings/states",
+            "./(all)/[workspaceSlug]/(settings)/settings/(workspace)/states/page.tsx"
+          ),
         ]),
 
         // --------------------------------------------------------------------

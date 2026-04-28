@@ -181,6 +181,13 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\02-filters\constants-issue-filter.ts" "%PLANE_SRC%\packages\constants\src\issue\filter.ts" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.21: aggiungere "state_detail.group" a DRAG_ALLOWED_GROUPS in
+REM packages/constants/src/issue/common.ts cosi' il drop su group_by=state_detail.group
+REM (workspace views / your-work / profile) non e' piu' bloccato dal toast
+REM "Drag and drop is disabled for the current grouping".
+copy /Y "%PATCHES_DIR%\01-layouts\shared\constants-issue-common.ts" "%PLANE_SRC%\packages\constants\src\issue\common.ts" >nul
+if errorlevel 1 goto :patcherr
+
 REM Patch workspace issue filter store: fix race condition + abort handling + layout hardcoding
 copy /Y "%PATCHES_DIR%\02-filters\workspace-filter-store.ts" "%PLANE_SRC%\apps\web\core\store\issue\workspace\filter.store.ts" >nul
 if errorlevel 1 goto :patcherr
@@ -239,6 +246,17 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\03-backend\project-base-view.py" "%PLANE_SRC%\apps\api\plane\app\views\project\base.py" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.20 hotfix #2: serializer Issue/Draft accetta workspace shared states.
+REM   Senza questa, il backend rifiuta con 400 "State is not valid please pass
+REM   a valid state_id" quando il frontend tenta di assegnare uno workspace
+REM   shared a un issue.
+copy /Y "%PATCHES_DIR%\03-backend\api-serializers-issue.py" "%PLANE_SRC%\apps\api\plane\api\serializers\issue.py" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\03-backend\app-serializers-issue.py" "%PLANE_SRC%\apps\api\plane\app\serializers\issue.py" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\03-backend\app-serializers-draft.py" "%PLANE_SRC%\apps\api\plane\app\serializers\draft.py" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.20b: workspace shared states CRUD endpoints.
 REM   - workspace/state.py: GET (esteso) + POST + WorkspaceStateDetailEndpoint
 REM     (GET/PATCH/DELETE) + WorkspaceStateMarkDefaultEndpoint (POST).
@@ -253,6 +271,37 @@ REM   Nessun consumer ancora le usa (UI in v1.20d): build = invariato a UI.
 copy /Y "%PATCHES_DIR%\05-states\project-state-service.ts" "%PLANE_SRC%\apps\web\core\services\project\project-state.service.ts" >nul
 if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\05-states\state-store.ts" "%PLANE_SRC%\apps\web\core\store\state.store.ts" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.20d: UI Workspace Settings -> States + sidebar entry + StateDropdown merge.
+REM   - types-settings.ts: TWorkspaceSettingsTabs esteso con "states".
+REM   - constants-settings-workspace.ts: WORKSPACE_SETTINGS["states"] + sidebar group ADMINISTRATION.
+REM   - sidebar-item-icon.tsx: icona Layers per "states".
+REM   - workspace-state-root.tsx (file nuovo): orchestrator analogo di ProjectStateRoot.
+REM   - workspace-states-page.tsx + header.tsx (file nuovi): la pagina settings.
+REM   - state-dropdown.tsx: merge automatico project + workspace shared state ids.
+REM   - routes-core.ts: registrata la nuova rotta /<slug>/settings/states/.
+copy /Y "%PATCHES_DIR%\05-states\types-settings.ts" "%PLANE_SRC%\packages\types\src\settings.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\05-states\constants-settings-workspace.ts" "%PLANE_SRC%\packages\constants\src\settings\workspace.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\05-states\sidebar-item-icon.tsx" "%PLANE_SRC%\apps\web\core\components\settings\workspace\sidebar\item-icon.tsx" >nul
+if errorlevel 1 goto :patcherr
+REM Crea la directory components/workspace-states (file nuovi additivi)
+if not exist "%PLANE_SRC%\apps\web\core\components\workspace-states" (
+    mkdir "%PLANE_SRC%\apps\web\core\components\workspace-states"
+)
+copy /Y "%PATCHES_DIR%\05-states\workspace-state-root.tsx" "%PLANE_SRC%\apps\web\core\components\workspace-states\root.tsx" >nul
+if errorlevel 1 goto :patcherr
+REM Crea l'index.ts per esportare WorkspaceStateRoot:
+> "%PLANE_SRC%\apps\web\core\components\workspace-states\index.ts" echo export * from "./root";
+REM Crea la directory della page settings (additiva).
+mkdir "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(settings)\settings\(workspace)\states" 2>nul
+copy /Y "%PATCHES_DIR%\05-states\workspace-states-page.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(settings)\settings\(workspace)\states\page.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\05-states\workspace-states-header.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(settings)\settings\(workspace)\states\header.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\05-states\state-dropdown.tsx" "%PLANE_SRC%\apps\web\core\components\dropdowns\state\dropdown.tsx" >nul
 if errorlevel 1 goto :patcherr
 
 REM PATCH v1.19: Team dashboard frontend - People page.

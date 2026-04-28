@@ -17,12 +17,115 @@ import { PaidPlanUpgradeModal } from "../license";
 import { Button } from "@plane/propel/button";
 
 // Marker visibile per verificare che la build custom sia quella attiva.
-// Se vedi questo badge "PATCHED v1.20c" accanto a "Community", stai usando
-// la versione con le patch dei 5 layout (List/Board/Calendar/Table/Gantt)
-// in Workspace Views e Your Work, la filter parity v1.17, l'endpoint
-// backend del Team dashboard v1.18, la People page frontend v1.19/b/c, lo
-// schema workspace-level states v1.20a, gli API endpoints CRUD v1.20b, e
-// il frontend store + service v1.20c.
+// Se vedi questo badge "PATCHED v1.21" accanto a "Community", l'utente puo'
+// fare drag-and-drop di task fra colonne state-group anche in workspace
+// views / your-work / profile (prima il toast bloccava).
+//
+// v1.21: Drag-and-drop su "state_detail.group" group_by.
+//   - constants/issue/common.ts: aggiunto "state_detail.group" a
+//     DRAG_ALLOWED_GROUPS. Sblocca isDragAllowed in list-group.tsx
+//     riga 249 e quindi isDraggingAllowed in block.tsx riga 112,
+//     che era il check che mostrava il toast "Drag and drop is
+//     disabled for the current grouping".
+//   - issue-layouts/utils.tsx: handleGroupDragDrop ora intercetta il
+//     caso groupBy === "state_detail.group". Il drop su un group
+//     destination "started" / "backlog" / ... viene risolto
+//     dinamicamente in state_id: cerca uno state del project del task
+//     con state.group === destination.groupId e setta
+//     updatedIssue.state_id = targetState.id. Se nessuno match
+//     (improbabile), il drop si limita a sortOrder.
+//   - hooks/use-group-dragndrop.ts: passa il nuovo callback
+//     getStatesByProject (estratto da useProjectState.stateMap) come
+//     9o argomento di handleGroupDragDrop.
+//   - Vincolo: serve che lo stateMap abbia gli state del project del
+//     task (project state caricati). Workspace views fetchano gia'
+//     workspaceStates a init che include tutti gli state per-project.
+//
+//   Cosa NON fa v1.21:
+//   - Drag-and-drop in Spreadsheet view: lo stock spreadsheet non ha
+//     drop fra group (le righe non sono raggruppate). Servirebbe un
+//     design dedicato. Skip per ora.
+//   - Drag-and-drop su altri group_by problematici (es. "created_by",
+//     "target_date") - non in scope.
+//
+//   Verifica: aprire workspace views / your-work in List layout con
+//   group_by "State group" attivo. Trascinare un task da Backlog a
+//   Started. Niente toast. Drop -> patchIssue chiamata,
+//   stato del task cambia.
+//
+// v1.20 hotfix #2b: workspace_id fallback nel validate.
+//   Bug: dopo hotfix #2, ancora 400 sul PATCH issue. Causa:
+//   IssueViewSet.partial_update passa solo `project_id` nel context del
+//   serializer, non `workspace_id`. La condizione
+//     Q(project__isnull=True, workspace_id=self.context.get("workspace_id"))
+//   diventava workspace_id=None che non matcha nessuno state shared
+//   (workspace_id su State e' NOT NULL).
+//   Fix: in tutti i 4 punti di validate, deriviamo workspace_id da
+//     1) self.instance.workspace_id (in update / partial_update)
+//     2) self.context.get("workspace_id") (se presente)
+//     3) Project.objects.filter(pk=project_id).values_list("workspace_id")
+//   Garantisce che workspace shared dello stesso workspace dell'issue
+//   passino la validation.
+//
+// v1.20 hotfix #2: backend serializer Issue/Draft accetta workspace shared.
+//   Bug: dopo v1.20d UI, selezionare uno workspace shared state nello
+//   StateDropdown di un work item ritornava 400 Bad Request:
+//     {"non_field_errors": ["State is not valid please pass a valid state_id"]}
+//   Causa: 4 punti di validation in api/serializers/issue.py e
+//   app/serializers/{issue,draft}.py controllano che state.project_id
+//   coincida col project del task. I workspace shared (project=NULL)
+//   non passano la condizione.
+//   Fix: rilassata la condizione a
+//     Q(project_id=...) | Q(project__isnull=True, workspace_id=...)
+//   In tutti i 4 punti. Aggiunto import django.db.models.Q nei 3 file.
+//   Lo workspace shared resta vincolato al medesimo workspace dell'issue
+//   (impossibile cross-workspace).
+//
+// v1.20d: Workspace-level shared states - UI completa.
+//   STEP 4 (FINAL) della milestone v1.20.
+//   - Workspace Settings -> States: nuova pagina /<slug>/settings/states/
+//     con CRUD UI (create/update/delete/mark-default) basata su WorkspaceStateRoot
+//     che riusa i componenti GroupList + ProjectStateLoader del modulo
+//     project-states stock. Permission: Admin/Member possono vedere, solo
+//     Admin puo' editare (gate dentro WorkspaceStateRoot.isEditable).
+//   - Sidebar workspace settings: aggiunta voce "States" con icona Layers
+//     nel gruppo ADMINISTRATION. Implementato via:
+//       packages/types/src/settings.ts        -> TWorkspaceSettingsTabs += "states"
+//       packages/constants/src/settings/workspace.ts -> WORKSPACE_SETTINGS["states"]
+//       sidebar/item-icon.tsx                  -> mappa "states" -> Layers
+//   - apps/web/app/.../(workspace)/states/{page,header}.tsx (file nuovi).
+//   - apps/web/core/components/workspace-states/{root,index}.tsx (nuovi).
+//   - StateDropdown patch: merge automatico project + workspace shared
+//     state ids. Quando l'utente apre il dropdown su un task, vede sia gli
+//     stati del progetto sia i workspace shared. La fetch lato store e'
+//     idempotente: project states fetched solo se mancanti per quel
+//     project, workspace states solo se mai fetched per quello slug.
+//   - routes-core.ts: nuova route registrata
+//       /:workspaceSlug/settings/states  ->  ./states/page.tsx
+//
+//   Cosa NON fa v1.20d:
+//   - Drag and drop di stati (UI usa il GroupList stock; il drag fra group
+//     potrebbe richiedere azioni dedicate non ancora implementate per scope
+//     workspace - lo affrontiamo se serve).
+//   - Indicatori visivi nello StateDropdown per distinguere project vs
+//     workspace state (nessun chip; sono mescolati come pari).
+//   - Migration interattiva da project state a workspace state. L'utente
+//     crea i workspace state manualmente; gli issue esistenti continuano
+//     a puntare ai loro project state finche' non li si sposta a mano.
+//
+//   Verifica build:
+//     1. Frontend compila (TypeScript strict): tipo TWorkspaceSettingsTabs
+//        ora include "states", e tutti i Record<TWorkspaceSettingsTabs, ...>
+//        chiedono la chiave "states".
+//     2. Sidebar workspace settings: cliccando in /<slug>/settings/ si vede
+//        nuova voce "States" con icona a strati nel gruppo administration.
+//     3. /<slug>/settings/states/ apre la pagina, mostra (vuoto) o gli
+//        shared state creati via API in v1.20b.
+//     4. Crea uno workspace state, modifica nome/colore, mark-default,
+//        cancella -> tutto via UI senza errori.
+//     5. Apri un task: il dropdown stato mostra in elenco sia gli stati del
+//        progetto sia i workspace shared. Selezionare uno workspace shared
+//        come stato di un issue funziona.
 //
 // v1.20c: Workspace-level shared states - frontend store + service.
 //   STEP 3 di 4 della milestone v1.20.
@@ -323,7 +426,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.20c";
+const CUSTOM_PATCH_TAG = "PATCHED v1.21";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

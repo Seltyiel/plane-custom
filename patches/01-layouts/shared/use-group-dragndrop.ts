@@ -2,6 +2,11 @@
  * Copyright (c) 2023-present Plane Software, Inc. and contributors
  * SPDX-License-Identifier: AGPL-3.0-only
  * See the LICENSE file for details.
+ *
+ * PATCH (plane-custom) v1.21:
+ *  Aggiunto getStatesByProject come 9o parametro al handleGroupDragDrop
+ *  per consentire il drop su group "state_detail.group" nelle workspace
+ *  views / your-work / profile (lookup state_id dal group).
  */
 
 import { useParams } from "next/navigation";
@@ -13,6 +18,8 @@ import { ISSUE_FILTER_DEFAULT_DATA } from "@/store/issue/helpers/base-issues.sto
 import { useIssueDetail } from "./store/use-issue-detail";
 import { useIssues } from "./store/use-issues";
 import { useIssuesActions } from "./use-issues-actions";
+// PATCH v1.21: lookup state per resolve "state_detail.group" -> state_id.
+import { useProjectState } from "./store/use-project-state";
 
 type DNDStoreType =
   | EIssuesStoreType.PROJECT
@@ -43,6 +50,13 @@ export const useGroupIssuesDragNDrop = (
   const {
     issues: { getIssueIds, addCycleToIssue, removeCycleFromIssue, changeModulesInIssue },
   } = useIssues(storeType);
+  // PATCH v1.21: stateMap per il lookup state per project (resolve drop su
+  // "state_detail.group" group key -> state_id).
+  const { stateMap } = useProjectState();
+  const getStatesByProject = (projectId: string) => {
+    if (!projectId || !stateMap) return undefined;
+    return Object.values(stateMap).filter((s) => s.project_id === projectId);
+  };
 
   /**
    * update Issue on Drop, checks if modules or cycles are changed and then calls appropriate functions
@@ -115,7 +129,9 @@ export const useGroupIssuesDragNDrop = (
       updateIssueOnDrop,
       groupBy,
       subGroupBy,
-      orderBy !== "sort_order"
+      orderBy !== "sort_order",
+      // PATCH v1.21: lookup state per "state_detail.group" group_by.
+      getStatesByProject
     ).catch((err) => {
       setToast({
         title: "Error!",
