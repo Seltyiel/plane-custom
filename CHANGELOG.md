@@ -6,6 +6,66 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.25] - 2026-04-29
+
+### Aggiunto
+- **Move modal: opzione "Workspace" (fittizio) come target** (v1.25a). Stock `joinedProjectIds` filtra il workspace project (v1.22b), quindi lo concateno manualmente in `allowedProjectIds` se ≠ current.
+- **Avatar/logo del project accanto all'identifier in tutte le viste** (v1.25b). Patch su `IssueIdentifier` shared (es. `[icon] O-10` nei block dei 5 layout, peek-overview, relations, power-k, parent-select).
+- **Nome del project nelle viste estese** (v1.25c). Quando `IssueIdentifier` e' chiamato con `size="md"` (caso `IssueTypeSwitcher` nel peek-overview e detail page), mostra anche `Project Name / O-10` con un separatore visivo.
+- **Filter `project_id` su Your Work** (v1.25d). `profile_issues.filters` ora include `project_id` per filtrare task assegnati per project. `my_issues` lo aveva gia' da v1.17. `group_by "project"` gia' presente in entrambi da v1.17.
+
+### Note
+- `order_by "by project"` non implementato: richiederebbe modifica del queryset backend. Il `group_by "project"` e' sufficiente per la maggior parte dei casi.
+
+---
+
+## [v1.24] - 2026-04-29
+
+### Aggiunto
+- **Move work item across projects**. Voce "Move to project" nei kebab menu di list/kanban/spreadsheet/calendar/gantt/peek-overview.
+- **Modal `MoveIssueModal`**: project picker (escluso il current), toggle "Include sub-issues" (default ON, conta i sub se disponibili), preview testuale dei campi che verranno resettati (labels, cycle, module, state mapping, assignees fuori target, parent cross-project), pulsanti Cancel/Move.
+- **Service `IssueMoveService.moveIssue(slug, issueId, payload)`** che chiama il backend.
+- **Hook `useMoveIssue()`**: orchestra chiamata API + cleanup ottimistico cache (rimuove dalla view corrente) + toast success con pulsante "View" che naviga al task nel nuovo project con nuovo identifier.
+
+### Modificato
+- `quick-action-dropdowns/helper.tsx`: aggiunta factory `createMoveMenuItem()` integrata in `useProjectIssueMenuItems`, `useAllIssueMenuItems`, `useCycleIssueMenuItems`, `useModuleIssueMenuItems`, `useWorkItemDetailMenuItems`.
+- `all-issue.tsx`, `project-issue.tsx`, `issue-detail.tsx`: state `moveIssueModalOpen` + render del modal + pass setter ai `menuItemProps`.
+
+### Note
+- L'use case originale (recuperare task quick-creati nel "Workspace" project per sbaglio) ora si fa in 3 click: kebab -> Move to project -> seleziona target -> Move.
+- Cycle/module quick actions non patchati per scope: l'use case principale e' coperto da workspace + project.
+- Backend (v1.24a) integrato e validato: vedi sezioni precedenti per dettagli logica.
+
+---
+
+## [v1.24a] - 2026-04-29
+
+### Aggiunto
+- **Endpoint backend per move issue** tra progetti dello stesso workspace.
+- `POST /api/workspaces/<slug>/issues/<issue_id>/move/` con body `{target_project_id, include_sub_issues:bool}`.
+- Smart state mapping: cerca `(name, group)` match nel target project, fallback default state, ultimo fallback primo state per sequence.
+- Filter assignees ai member del target project (rimuove chi non e' membro).
+- Reset parent_id se cross-project dopo il move.
+- Genera nuovo `sequence_id` col pattern stock (`pg_advisory_xact_lock` postgres per il target project).
+- DELETE `IssueSequence` vecchia + INSERT nuova nel target.
+- UPDATE `project_id`/`workspace_id` su `IssueAssignee`, `IssueLink`, `IssueAttachment`, `IssueActivity`, `IssueComment`, `IssueSubscriber`, `IssueReaction`, `IssueMention`, `IssueVersion`, `IssueDescriptionVersion`, `IssueBlocker` (entrambi i lati), `IssueRelation` (entrambi i lati).
+- DELETE `CycleIssue`, `ModuleIssue`, `IssueLabel` (project-scoped).
+- Se `include_sub_issues=True`: ricorsivo sui sub-issue.
+
+### Permission
+- ADMIN/MEMBER del workspace (tramite `WorkspaceEntityPermission` + `allow_permission([ADMIN, MEMBER], "WORKSPACE")`).
+- ADMIN/MEMBER del target project (check `ProjectMember.role IN [20, 15]`).
+
+### Note
+- Backend only. Frontend service/store + UI in v1.24b + v1.24c.
+- Test consigliato post-build via curl o Postman:
+```
+POST /api/workspaces/oniro/issues/<id>/move/
+Body: {"target_project_id": "<other-project-id>"}
+```
+
+---
+
 ## [v1.23b] - 2026-04-28 (hotfix #2)
 
 ### Modificato

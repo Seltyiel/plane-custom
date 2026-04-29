@@ -135,6 +135,10 @@ export const ISSUE_DISPLAY_FILTERS_BY_PAGE: TIssueFiltersToDisplayByPageType = {
       "created_by_id",
       "subscriber_id",
       "label_id",
+      // PATCH v1.25d: project_id filter in Your Work (utile quando i task
+      // assegnati spaziano fra piu' project). group_by "project" e' gia'
+      // disponibile da v1.17.
+      "project_id",
       "start_date",
       "target_date",
     ],

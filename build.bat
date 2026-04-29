@@ -268,6 +268,39 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\03-backend\api-workspace-project-endpoint.py" "%PLANE_SRC%\apps\api\plane\app\views\workspace\workspace_project.py" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.24a: backend endpoint per move issue tra progetti.
+REM   POST /api/workspaces/<slug>/issues/<issue_id>/move/
+REM   Body: {target_project_id, include_sub_issues}
+copy /Y "%PATCHES_DIR%\08-move-issue\api-issue-move-view.py" "%PLANE_SRC%\apps\api\plane\app\views\workspace\issue_move.py" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.24b: frontend service + hook per move issue.
+REM   - services/issue-move.service.ts: IssueMoveService.moveIssue
+REM   - hooks/use-move-issue.tsx: useMoveIssue() orchestra API + cache cleanup
+REM     + toast con action item "View" che naviga al task nel nuovo project.
+copy /Y "%PATCHES_DIR%\08-move-issue\issue-move-service.ts" "%PLANE_SRC%\apps\web\core\services\issue-move.service.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\08-move-issue\use-move-issue.tsx" "%PLANE_SRC%\apps\web\core\hooks\use-move-issue.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.24c: UI move issue.
+REM   - move-issue-modal.tsx (nuovo file): modal con project picker + toggle
+REM     sub-issue + preview campi resettati.
+REM   - quick-action-helper.tsx: createMoveMenuItem factory + integrato nei
+REM     hook menu (project, all, cycle, module, detail).
+REM   - all-issue.tsx, project-issue.tsx, issue-detail.tsx (full replacement):
+REM     state moveIssueModalOpen + render del modal + pass setter ai props.
+copy /Y "%PATCHES_DIR%\08-move-issue\move-issue-modal.tsx" "%PLANE_SRC%\apps\web\core\components\issues\move-issue-modal.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\08-move-issue\quick-action-helper.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\quick-action-dropdowns\helper.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\08-move-issue\all-issue-quick-actions.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\quick-action-dropdowns\all-issue.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\08-move-issue\project-issue-quick-actions.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\quick-action-dropdowns\project-issue.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\08-move-issue\issue-detail-quick-actions.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\quick-action-dropdowns\issue-detail.tsx" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.22b: frontend store + service + hook per workspace project fittizio.
 REM   - types/project: IPartialProject.is_hidden
 REM   - project store: filter is_hidden + getter workspaceHiddenProjectId

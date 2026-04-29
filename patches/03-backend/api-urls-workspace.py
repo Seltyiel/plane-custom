@@ -75,6 +75,8 @@ from plane.app.views.workspace.state import (
 # PATCH v1.22a - endpoint workspace-project (lazy get_or_create del progetto
 # fittizio "Workspace" per task workspace-level - Opzione A v1.22).
 from plane.app.views.workspace.workspace_project import WorkspaceProjectEndpoint
+# PATCH v1.24a: move issue across projects.
+from plane.app.views.workspace.issue_move import MoveIssueEndpoint
 
 
 urlpatterns = [
@@ -238,6 +240,13 @@ urlpatterns = [
         "workspaces/<str:slug>/workspace-project/",
         WorkspaceProjectEndpoint.as_view(),
         name="workspace-project",
+    ),
+    # PATCH v1.24a: move issue across projects.
+    # Body: {target_project_id, include_sub_issues:bool}
+    path(
+        "workspaces/<str:slug>/issues/<uuid:issue_id>/move/",
+        MoveIssueEndpoint.as_view(),
+        name="workspace-issue-move",
     ),
     path(
         "workspaces/<str:slug>/estimates/",

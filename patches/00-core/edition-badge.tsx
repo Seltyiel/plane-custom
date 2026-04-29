@@ -21,6 +21,114 @@ import { Button } from "@plane/propel/button";
 // feature delle versioni precedenti il quick-add inline funziona ora anche
 // in Workspace Views, Your Work, Calendar workspace.
 //
+// v1.25: Move modal + project visualization + filter project su Your Work.
+//   - move-issue-modal.tsx (v1.25a): include workspaceHiddenProjectId come
+//     opzione target del picker. Stock joinedProjectIds lo filtra (v1.22b)
+//     quindi lo concateno manualmente in allowedProjectIds. Sempre escluso
+//     il current project del task.
+//   - issue-identifier.tsx (v1.25b + v1.25c): aggiunto avatar/logo del
+//     project PRIMA dell'IdentifierText. Una sola patch copre tutti i 5
+//     layout + peek-overview + parent-select + relations + power-k. Per
+//     size="md" (peek-overview e detail page tramite IssueTypeSwitcher)
+//     aggiunge anche il NOME del project (es. "[icon] Oniro / O-10") cosi'
+//     sull'header esteso si vede subito da quale project arriva il task.
+//   - constants-issue-filter.ts (v1.25d): aggiunto project_id ai filters di
+//     profile_issues (Your Work). my_issues lo aveva gia' da v1.17. group_by
+//     "project" e' gia' presente in entrambi da v1.17.
+//
+//   Cosa NON fa v1.25:
+//   - order_by "by project" lato backend: richiederebbe modifica del
+//     queryset Django (server-side). Skip per ora; il group_by "project" e'
+//     sufficiente per visualizzare task raggruppati per project.
+//
+//   Verifica build:
+//     1. /<slug>/workspace-views/<viewId>: ogni task ha l'avatar del
+//        project prima dell'identifier (es. icona + "O-10"). Hover ->
+//        tooltip con nome project.
+//     2. Apri un task in peek o full-screen: in alto vedi
+//        "[icon] Oniro / O-10" prima del titolo.
+//     3. Apri il kebab di un task del workspace project -> Move to project
+//        -> il dropdown ora include anche "Workspace" (oltre ai project
+//        reali).
+//     4. /<slug>/profile/<myId>/assigned: nei filter del display c'e'
+//        ora "Project" come dimensione di filtraggio.
+//
+// v1.24c: UI Move work item (modal + voce nei kebab menu).
+//   - apps/web/core/components/issues/move-issue-modal.tsx (nuovo file):
+//     dialog con project picker (escluso il current), toggle "Include
+//     sub-issues" (default ON, conta i sub se disponibili), preview testuale
+//     dei campi che verranno resettati (labels, cycle, module, state, ...).
+//   - quick-action-dropdowns/helper.tsx: aggiunta factory
+//     createMoveMenuItem() integrata in useProjectIssueMenuItems,
+//     useAllIssueMenuItems, useCycleIssueMenuItems, useModuleIssueMenuItems,
+//     useWorkItemDetailMenuItems. La voce e' visibile solo se il caller
+//     ha passato setMoveIssueModalOpen.
+//   - all-issue.tsx, project-issue.tsx, issue-detail.tsx (full replacement):
+//     state locale moveIssueModalOpen + render del MoveIssueModal +
+//     pass setMoveIssueModalOpen ai menuItemProps. Cycle/module quick
+//     actions skip (l'use case principale e' coperto: workspace + project).
+//
+//   Verifica build:
+//     1. Apri qualsiasi task in workspace views o project view -> kebab
+//        menu -> voce "Move to project" presente.
+//     2. Click -> modal "Move work item" con dropdown project (escluso il
+//        current), toggle "Include N sub-issues" (se >0), preview reset,
+//        Cancel/Move buttons.
+//     3. Seleziona target -> Move -> task scompare dalla view corrente
+//        (cleanup ottimistico) -> toast success con pulsante "View" che
+//        naviga al task nel nuovo project con nuovo identifier.
+//     4. Stesso comportamento dal peek-overview kebab.
+//
+//   Cosa NON fa v1.24c:
+//   - Voce nel kebab di cycle/module quick actions (skip per scope).
+//   - Activity log ("Moved from X to Y") nel feed del task: skip.
+//   - UI per "drag to project" (drag a Sidebar Project) - nice to have.
+//
+// v1.24b: frontend service + hook per Move issue.
+//   - apps/web/core/services/issue-move.service.ts (nuovo): IssueMoveService.
+//   - apps/web/core/hooks/use-move-issue.tsx (nuovo): useMoveIssue() hook.
+//     Orchestra: API call -> rimuove issue dalla cache (rootStore.issue.
+//     issues.removeIssue) -> toast success con pulsante "View" che porta
+//     al nuovo project. Cleanup cache best-effort: errori non bloccanti.
+//
+// v1.24a: backend Move issue across projects.
+//   Endpoint POST /api/workspaces/<slug>/issues/<issue_id>/move/
+//   Body: {target_project_id, include_sub_issues}
+//   - apps/api/plane/app/views/workspace/issue_move.py (nuovo file).
+//   - apps/api/plane/app/urls/workspace.py: registra route.
+//
+//   Logica:
+//   - transaction.atomic + select_for_update sull'issue principale.
+//   - Permission: ADMIN/MEMBER del workspace + member del target project.
+//   - Smart state mapping: name+group match nel target -> fallback default
+//     state -> primo state per sequence.
+//   - Filter assignees ai member del target project (rimuove non-member).
+//   - Reset parent_id se cross-project.
+//   - Genera sequence_id col pattern stock (advisory_xact_lock postgres).
+//   - DELETE IssueSequence vecchia + INSERT nuova nel target.
+//   - UPDATE project_id (e workspace_id) su tabelle correlate:
+//     IssueAssignee, IssueLink, IssueAttachment, IssueActivity, IssueComment,
+//     IssueSubscriber, IssueReaction, IssueMention, IssueVersion,
+//     IssueDescriptionVersion, IssueBlocker (entrambi i lati),
+//     IssueRelation (entrambi i lati).
+//   - DELETE CycleIssue, ModuleIssue, IssueLabel (project-scoped).
+//   - Se include_sub_issues=true: ricorsivo su sub-issue (con lock proprio).
+//
+//   Cosa NON fa v1.24a:
+//   - Frontend service / store / UI -> v1.24b + v1.24c.
+//   - Activity log entry per il move (potrebbe essere aggiunto come
+//     "moved from project X to Y" - skip per ora).
+//
+//   Verifica build:
+//     - curl POST /api/workspaces/oniro/issues/<id>/move/ con body
+//       {target_project_id: <other-project>} deve ritornare 200 + issue
+//       con nuovo sequence_id, project_id, state_id.
+//     - Verificare che le tabelle correlate (IssueAssignee, ecc) abbiano
+//       project_id aggiornato. CycleIssue, ModuleIssue, IssueLabel
+//       cancellate.
+//     - GET /api/workspaces/oniro/projects/<old-project>/issues/<id>/
+//       deve restituire 404 (l'issue ora e' nel nuovo project).
+//
 // v1.23b (hotfix #2): Calendar quick-add hover su celle.
 //   Stock calendar/quick-add-issue-actions.tsx riga 82 ha
 //     if (!projectId) return null;
@@ -656,7 +764,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.23b";
+const CUSTOM_PATCH_TAG = "PATCHED v1.25";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states
