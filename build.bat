@@ -127,6 +127,24 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\01-layouts\workspace-roots\gantt-workspace-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\gantt\roots\workspace-root.tsx" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.31a: WorkspaceSpreadsheetRoot mancava di una useEffect con
+REM fetchIssues e quindi il Spreadsheet andava bianco se non si transitava
+REM prima per il Gantt (che riempiva il GLOBAL store). Aggiungo fetch.
+copy /Y "%PATCHES_DIR%\01-layouts\workspace-roots\spreadsheet-workspace-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\spreadsheet\roots\workspace-root.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.31b: 4 latent permission bugs (allowPermissions PROJECT senza
+REM context projectId). Pattern v1.23a: fallback a WORKSPACE level se
+REM projectId non e' in URL.
+copy /Y "%PATCHES_DIR%\11-quick-actions\archived-issue.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\quick-action-dropdowns\archived-issue.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\11-quick-actions\cycle-issue.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\quick-action-dropdowns\cycle-issue.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\11-quick-actions\module-issue.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\quick-action-dropdowns\module-issue.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\11-quick-actions\workspace-draft-delete-modal.tsx" "%PLANE_SRC%\apps\web\core\components\issues\workspace-draft\delete-modal.tsx" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.23d: Gantt drag click leak. Aggiunto tracking distanza mouse
 REM tra mousedown e click. Se > 5px, click ignorato (era drag).
 copy /Y "%PATCHES_DIR%\01-layouts\workspace-roots\gantt-blocks.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\gantt\blocks.tsx" >nul

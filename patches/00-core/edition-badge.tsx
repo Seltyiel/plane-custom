@@ -21,6 +21,34 @@ import { Button } from "@plane/propel/button";
 // feature delle versioni precedenti il quick-add inline funziona ora anche
 // in Workspace Views, Your Work, Calendar workspace.
 //
+// v1.31b: 4 latent permission bug nei quick-action dropdown e nel
+//   workspace-draft delete modal.
+//   - quick-action-dropdowns/archived-issue.tsx, cycle-issue.tsx,
+//     module-issue.tsx: stock chiama allowPermissions(...PROJECT) senza
+//     passare slug/projectId; in context project standard funziona, ma
+//     se in futuro questi dropdown vengono renderizzati in context
+//     senza projectId in URL le azioni si bloccano. Pattern v1.23a:
+//     leggo projectId da useParams e uso WORKSPACE level come fallback.
+//   - workspace-draft/delete-modal.tsx: stock controllava
+//     allowPermissions([ADMIN], PROJECT) per `canPerformProjectAdminActions`.
+//     Ma i workspace-draft sono workspace-level (no projectId), quindi
+//     l'helper non risolveva mai e l'admin non poteva cancellare draft di
+//     altri. Fix: uso WORKSPACE level. Backend gia' applica lo stesso
+//     vincolo con "Only admin or creator can delete the work item".
+//
+// v1.31a: Spreadsheet bianca su workspace views.
+//   Sintomo: la table view in Workspace Views compariva solo passando
+//   prima per il Gantt. Direct nav o switch da List/Board/Calendar ->
+//   schermata bianca.
+//   Causa: WorkspaceSpreadsheetRoot non aveva la useEffect con
+//   fetchIssues come gli altri Base*Root. Stock Plane lo compensava con
+//   una fetch globale in AllIssueLayoutRoot, che la nostra v1.16 ha
+//   rimosso (perche' rompeva il bucketing del Calendar). Risultato:
+//   Spreadsheet senza dati nel GLOBAL store. Gantt riempiva il GLOBAL
+//   store come effetto collaterale e da li' funzionava.
+//   Fix: aggiunto useEffect che chiama fetchIssues("init-loader",
+//   { canGroup:false, perPageCount:100 }) al mount/cambio view.
+//
 // v1.27b hotfix: bulk operations endpoint 404.
 //   `IssueService.bulkOperations()` chiama
 //     POST /api/workspaces/<slug>/projects/<projectId>/bulk-operation-issues/
@@ -1028,7 +1056,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.30";
+const CUSTOM_PATCH_TAG = "PATCHED v1.31b";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

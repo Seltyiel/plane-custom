@@ -6,6 +6,31 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.31b] - 2026-04-29 (hotfix bundle)
+
+### Fixato
+- **Quick-action dropdown - permission gate (defensive)**: `archived-issue.tsx`, `cycle-issue.tsx`, `module-issue.tsx` chiamavano `allowPermissions([ADMIN, MEMBER], PROJECT)` senza passare slug/projectId. In context project standard funziona perche' la helper risolve dal context, ma e' una trappola se in futuro questi dropdown vengono renderizzati in context senza projectId in URL. Pattern v1.23a applicato: leggo projectId da `useParams` e uso WORKSPACE level come fallback (`projectId ? PROJECT : WORKSPACE`).
+- **Workspace draft - admin non poteva cancellare draft altrui**: `workspace-draft/delete-modal.tsx` calcolava `canPerformProjectAdminActions = allowPermissions([ADMIN], PROJECT)`. Ma i draft sono workspace-level e quindi PROJECT non si risolveva mai -> sempre false -> solo il creatore poteva cancellare. Fix: uso `EUserPermissionsLevel.WORKSPACE`. Il backend gia' applica lo stesso vincolo ("Only admin or creator can delete the work item") quindi questa e' solo la patch del check client-side.
+
+### File toccati
+- Nuovi: `patches/11-quick-actions/archived-issue.tsx`, `cycle-issue.tsx`, `module-issue.tsx`, `workspace-draft-delete-modal.tsx`
+- `build.bat` (4 nuove copy step v1.31b)
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG -> v1.31b)
+
+---
+
+## [v1.31a] - 2026-04-29 (hotfix)
+
+### Fixato
+- **Spreadsheet bianca su Workspace Views**: la table view in Workspace Views si vedeva solo passando prima per il Gantt; navigazione diretta o switch da List/Board/Calendar lasciava la schermata bianca. Causa: `WorkspaceSpreadsheetRoot` non aveva `useEffect` con `fetchIssues` come gli altri `Base*Root`. Stock Plane lo compensava con la fetch globale di `AllIssueLayoutRoot`, ma la nostra v1.16 l'aveva rimossa (rompeva il bucketing del Calendar). Risultato: il GLOBAL store restava vuoto fino a quando un altro layout (Gantt) lo riempiva come effetto collaterale. Fix: aggiunta `useEffect` in `WorkspaceSpreadsheetRoot` che chiama `fetchIssues("init-loader", { canGroup: false, perPageCount: 100 })` al mount/cambio view, con `.catch(swallowAbort)` per AbortError di layout switch.
+
+### File toccati
+- Nuovo: `patches/01-layouts/workspace-roots/spreadsheet-workspace-root.tsx`
+- `build.bat` (nuova copy step v1.31a)
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG -> v1.31a, commento)
+
+---
+
 ## [v1.30] - 2026-04-29
 
 ### Aggiunto
