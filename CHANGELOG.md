@@ -6,6 +6,19 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.30] - 2026-04-29
+
+### Aggiunto
+- **Mini-calendario settimanale** nella MyDashboard sotto le 4 KPI cards.
+- 7 colonne (Lun-Dom), ogni colonna mostra task con `target_date` quel giorno (max 5 visibili + "+N more").
+- Colonna "oggi" evidenziata in accent color. Click su un task → peek-overview.
+- Backend `/me/dashboard/` esteso con `week_issues` (cap 100) e `week_range`.
+
+### Modificato
+- `TDashboardResponse` esteso con `week_issues: TIssue[]` e `week_range: {monday, sunday}`.
+
+---
+
 ## [v1.23d] - 2026-04-29 (hotfix)
 
 ### Fixato

@@ -21,6 +21,27 @@ import { Button } from "@plane/propel/button";
 // feature delle versioni precedenti il quick-add inline funziona ora anche
 // in Workspace Views, Your Work, Calendar workspace.
 //
+// v1.30: Mini-calendario settimanale nella MyDashboard.
+//   - Backend (api-dashboard-view.py): endpoint /me/dashboard/ esteso con
+//     `week_issues` (tutti i task con target_date in [Lun, Dom] della
+//     settimana corrente, active state group, cap a 100) e `week_range`
+//     {monday, sunday}. Cap protegge payload se molti task.
+//   - Frontend (dashboard-service.ts): TDashboardResponse esteso con i
+//     nuovi campi.
+//   - Frontend (my-dashboard.tsx): nuovo componente <WeeklyCalendar/>
+//     inserito sotto le 4 KPI cards. 7 colonne (Lun-Dom), ogni colonna
+//     mostra task target_date di quel giorno (max 5 visibili + "+N more").
+//     Click su un task -> peek-overview. Colonna oggi evidenziata in
+//     accent color.
+//
+//   Verifica build:
+//     1. Vai su /<slug>/ (home). Sotto le 4 KPI cards vedi una tabella
+//        a 7 colonne con i giorni della settimana corrente.
+//     2. Task con target_date in un giorno visibile -> compaiono nella
+//        colonna giusta.
+//     3. Colonna "oggi" evidenziata. Click su un task -> peek si apre.
+//     4. Se hai >5 task in un giorno, vedi "+N more".
+//
 // v1.23d hotfix: Gantt drag click leak.
 //   In Gantt, dopo drag, il browser inviava un click event al rilascio
 //   del mouse -> peek-overview si apriva al termine di ogni drag.
@@ -978,7 +999,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.23d";
+const CUSTOM_PATCH_TAG = "PATCHED v1.30";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states
