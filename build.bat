@@ -127,6 +127,11 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\01-layouts\workspace-roots\gantt-workspace-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\gantt\roots\workspace-root.tsx" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.23d: Gantt drag click leak. Aggiunto tracking distanza mouse
+REM tra mousedown e click. Se > 5px, click ignorato (era drag).
+copy /Y "%PATCHES_DIR%\01-layouts\workspace-roots\gantt-blocks.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\gantt\blocks.tsx" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.16: rimuove fetchIssues redundante di AllIssueLayoutRoot che sovrascriveva
 REM la fetch grouped del Calendar (workspace views) -> calendario vuoto.
 copy /Y "%PATCHES_DIR%\01-layouts\shared\all-issue-layout-root.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\roots\all-issue-layout-root.tsx" >nul
@@ -347,6 +352,13 @@ REM PATCH v1.27c: multi-select in Spreadsheet layout (rimuove gate
 REM `projectId &&` davanti al checkbox cosi' visibile anche in workspace).
 copy /Y "%PATCHES_DIR%\10-bulk-actions\spreadsheet-issue-row.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\spreadsheet\issue-row.tsx" >nul
 if errorlevel 1 goto :patcherr
+
+REM PATCH v1.29: ROLLBACK. Il flag isMovePageEnabled in CE controlla solo
+REM la visibilita' della voce di menu "Move page", ma il MovePageModal in
+REM CE e' uno stub `return null`. Sbloccare il flag faceva apparire una
+REM voce morta nel menu. Patch ritirata. Per averla funzionante serve
+REM riscrivere il modale + verificare endpoint backend (Pattern A
+REM travestito, non Pattern B). Rinviata.
 
 REM PATCH v1.28: Export CSV button.
 REM   - export-csv-button.tsx (nuovo): componente riusabile parametrizzato

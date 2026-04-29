@@ -21,6 +21,30 @@ import { Button } from "@plane/propel/button";
 // feature delle versioni precedenti il quick-add inline funziona ora anche
 // in Workspace Views, Your Work, Calendar workspace.
 //
+// v1.23d hotfix: Gantt drag click leak.
+//   In Gantt, dopo drag, il browser inviava un click event al rilascio
+//   del mouse -> peek-overview si apriva al termine di ogni drag.
+//   Fix: in apps/web/core/components/issues/issue-layouts/gantt/blocks.tsx
+//   tracciamo la posizione del mouse al mousedown e calcoliamo la
+//   distanza al click. Se > 5px, era drag -> ignoro l'apertura del peek.
+//   Se <= 5px, era click vero -> apro peek normalmente.
+//   Patch applicata solo al `IssueGanttBlock` (barra). `IssueGanttSidebarBlock`
+//   (sidebar) non e' draggable, invariato.
+//
+// v1.29: TENTATIVO RITIRATO (ROLLBACK).
+//   Avevo sbloccato isMovePageEnabled e isPageSharingEnabled cambiando
+//   ce/hooks/use-page-flag.ts a {true, true}. La voce di menu "Move page"
+//   doveva comparire MA il MovePageModal in apps/web/ce/components/pages/
+//   modals/move-page-modal.tsx e' uno stub `return null`. PageShareControl
+//   e PageMoveControl in ce/components/pages/header/ idem. Era Pattern A
+//   travestito da Pattern B: il flag controllava solo la visibilita' del
+//   menu, non sbloccava codice esistente. Rollback: hook resta `{false,
+//   false}` come stock.
+//
+//   Per avere queste feature serve riscrivere da zero MovePageModal +
+//   header controls + verificare endpoint backend per page sharing
+//   pubblico. Costo: ~1 giornata. Rinviato (non operativamente critico).
+//
 // v1.23c+ hotfix bundle:
 //   - Gantt drag persistence in workspace context (vedi sotto).
 //   - MoveIssueModal z-index + stopPropagation: era z-20, sotto il peek-
@@ -954,7 +978,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.23c";
+const CUSTOM_PATCH_TAG = "PATCHED v1.23d";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

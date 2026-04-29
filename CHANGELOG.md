@@ -6,6 +6,25 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.23d] - 2026-04-29 (hotfix)
+
+### Fixato
+- **Gantt drag click leak**: dopo drag di un block in Gantt, al rilascio del mouse il browser inviava un evento `click` -> peek-overview si apriva sempre. Fix in `gantt/blocks.tsx`: traccio la posizione del mouse al `mousedown` e calcolo la distanza al `click`. Se > 5px era drag -> ignoro. Se <= 5px era click vero -> apro peek.
+- Solo `IssueGanttBlock` (barra) patchato. `IssueGanttSidebarBlock` (sidebar) non e' draggable, invariato.
+
+---
+
+## [v1.29] - 2026-04-29 — RITIRATA
+
+### Tentato
+- Sblocco di Page Move + Page Sharing tramite flag `usePageFlag` (CE) da `{false, false}` a `{true, true}`.
+
+### Rollback
+- Il `MovePageModal` in `apps/web/ce/components/pages/modals/move-page-modal.tsx` e' uno stub `return null`. Lo stesso per `PageShareControl` e `PageMoveControl`. Il flag controllava solo la visibilita' del menu, non sbloccava codice esistente. Pattern A travestito da Pattern B — la mia mappatura iniziale era ottimistica.
+- Patch ritirata. File `patches/12-page-flags/` cancellato. Per averle funzionanti serve riscrivere ~1 giornata di codice (modale + header controls + verifica backend sharing). Rinviato.
+
+---
+
 ## [v1.23c] - 2026-04-29 (hotfix bundle)
 
 ### Fixato
