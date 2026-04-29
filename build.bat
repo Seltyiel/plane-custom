@@ -317,6 +317,32 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\09-dashboard\workspace-home-page.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\page.tsx" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.27a: Bulk actions MVP.
+REM   - bulk-action-bar.tsx (nuovo): vera barra azioni che riusa
+REM     useMultipleSelectStore stock + selectionHelpers. Archive + Delete
+REM     con conferme.
+REM   - bulk-operations-root.tsx: sostituisce IssueBulkOperationsRoot CE
+REM     stock (che renderizzava upgrade banner "Plane One") con render
+REM     della BulkActionBar custom.
+REM   - list-block.tsx: rimosso gate `projectId &&` davanti al checkbox,
+REM     cosi' visibile anche in workspace views/your-work.
+copy /Y "%PATCHES_DIR%\10-bulk-actions\bulk-action-bar.tsx" "%PLANE_SRC%\apps\web\core\components\issues\bulk-operations\bulk-action-bar.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\10-bulk-actions\bulk-operations-root.tsx" "%PLANE_SRC%\apps\web\ce\components\issues\bulk-operations\root.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\10-bulk-actions\list-block.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\list\block.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.27a hotfix: useBulkOperationStatus stock CE ritornava false
+REM (feature paid). Cambia a true per abilitare il checkbox multi-select.
+copy /Y "%PATCHES_DIR%\10-bulk-actions\use-bulk-operation-status.ts" "%PLANE_SRC%\apps\web\ce\hooks\use-bulk-operation-status.ts" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.27b: bulk move issue modal + extended action bar (state,
+REM priority, assignee, move to project).
+copy /Y "%PATCHES_DIR%\10-bulk-actions\bulk-move-issue-modal.tsx" "%PLANE_SRC%\apps\web\core\components\issues\bulk-operations\bulk-move-issue-modal.tsx" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.22b: frontend store + service + hook per workspace project fittizio.
 REM   - types/project: IPartialProject.is_hidden
 REM   - project store: filter is_hidden + getter workspaceHiddenProjectId

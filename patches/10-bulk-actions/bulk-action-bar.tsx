@@ -3,31 +3,38 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  * See the LICENSE file for details.
  *
- * PATCH (plane-custom) v1.27a:
- *  Bottom bar fixed che appare quando ci sono task selezionati. Riusa il
- *  sistema multi-select STOCK (useMultipleSelectStore + selectionHelpers),
- *  cosi' non duplichiamo lo stato di selezione.
+ * PATCH (plane-custom) v1.27a + v1.27b:
+ *  Bottom bar fixed quando ci sono task selezionati. Riusa il sistema
+ *  multi-select stock (useMultipleSelectStore + selectionHelpers).
  *
- *  Mostra: count + Archive + Delete + Clear. (state/priority/assignee in
- *  v1.27b.)
+ *  Azioni:
+ *    - State (v1.27b): solo se tutti i selezionati sono dello stesso
+ *      project (state e' project-scoped). Disabled altrimenti.
+ *    - Priority (v1.27b): enum globale, sempre attivo.
+ *    - Assignee (v1.27b): member picker workspace-wide.
+ *    - Move to project (v1.27b): apre BulkMoveIssueModal che chiama in
+ *      loop l'endpoint v1.24 (POST /issues/<id>/move/).
+ *    - Archive (v1.27a): bulkArchiveIssues stock.
+ *    - Delete (v1.27a): bulkDeleteIssues stock.
  *
- *  Backend: gli endpoint bulkArchiveIssues e bulkDeleteIssues stock sono
- *  scoped per project (URL /projects/<projectId>/bulk-...). Per workspace
- *  views gli ID selezionati possono spaziare fra piu' project: raggruppiamo
- *  e chiamiamo in parallelo.
- *
- *  Il file CE stock (IssueBulkOperationsRoot) rendeva un upgrade banner
- *  "Upgrade to Plane One"; lo sostituiamo con questa vera barra.
+ *  Backend:
+ *    - state/priority/assignee -> IssueService.bulkOperations(slug,
+ *      projectId, {issue_ids, properties}). Group by project_id.
+ *    - archive -> bulkArchiveIssues. Group by project_id.
+ *    - delete -> bulkDeleteIssues. Group by project_id.
+ *    - move -> IssueMoveService.moveIssue (v1.24) in loop.
  */
 
 import { useState, Fragment, useMemo } from "react";
 import { observer } from "mobx-react";
 import { useParams } from "next/navigation";
-import { Archive, Trash2, X } from "lucide-react";
+import { Archive, ArrowRightLeft, Trash2, X } from "lucide-react";
 import { Dialog, Transition } from "@headlessui/react";
 // plane imports
 import { Button } from "@plane/propel/button";
 import { TOAST_TYPE, setToast } from "@plane/propel/toast";
+import { Tooltip } from "@plane/propel/tooltip";
+import type { TIssuePriorities } from "@plane/types";
 import { cn } from "@plane/utils";
 // services
 import { IssueService } from "@/services/issue/issue.service";
@@ -36,6 +43,12 @@ import { useIssueDetail } from "@/hooks/store/use-issue-detail";
 import { useMultipleSelectStore } from "@/hooks/store/use-multiple-select-store";
 // types
 import type { TSelectionHelper } from "@/hooks/use-multiple-select";
+// dropdowns
+import { StateDropdown } from "@/components/dropdowns/state/dropdown";
+import { PriorityDropdown } from "@/components/dropdowns/priority";
+import { MemberDropdown } from "@/components/dropdowns/member/dropdown";
+// PATCH v1.27b
+import { BulkMoveIssueModal } from "./bulk-move-issue-modal";
 
 const issueService = new IssueService();
 
@@ -50,11 +63,12 @@ export const BulkActionBar = observer(function BulkActionBar(props: Props) {
   const slug = workspaceSlug?.toString();
   const { isSelectionActive, selectedEntityIds, clearSelection } = useMultipleSelectStore();
   const {
-    issue: { getIssueById, removeIssue: removeIssueFromCache },
+    issue: { getIssueById, removeIssue: removeIssueFromCache, updateIssue: updateIssueInCache },
   } = useIssueDetail();
 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [showMoveModal, setShowMoveModal] = useState(false);
   const [isWorking, setIsWorking] = useState(false);
 
   // Raggruppa gli ID selezionati per project_id (necessario per gli endpoint
@@ -71,10 +85,62 @@ export const BulkActionBar = observer(function BulkActionBar(props: Props) {
     return grouped;
   }, [selectedEntityIds, getIssueById]);
 
+  // PATCH v1.27b: Determina se tutti i selezionati sono dello stesso project.
+  // Se sì, recupera il project_id (per StateDropdown). Altrimenti undefined.
+  const projectIds = Object.keys(groupedByProject);
+  const sameProjectId = projectIds.length === 1 ? projectIds[0] : undefined;
+
   if (!isSelectionActive || selectionHelpers.isSelectionDisabled) return null;
   if (!slug) return null;
 
   const count = selectedEntityIds.length;
+
+  // PATCH v1.27b: bulk update properties (state/priority/assignee) tramite
+  // bulkOperations stock. Group by project_id e chiamate parallele.
+  const handleBulkUpdate = async (
+    properties: Record<string, unknown>,
+    successMsg: string
+  ): Promise<void> => {
+    setIsWorking(true);
+    try {
+      await Promise.all(
+        Object.entries(groupedByProject).map(([projectId, issueIds]) =>
+          issueService.bulkOperations(slug, projectId, { issue_ids: issueIds, properties })
+        )
+      );
+      // Aggiorna cache ottimisticamente
+      selectedEntityIds.forEach((id) => {
+        try {
+          updateIssueInCache(id, properties);
+        } catch {
+          /* best-effort */
+        }
+      });
+      setToast({
+        type: TOAST_TYPE.SUCCESS,
+        title: "Updated",
+        message: `${count} work item${count === 1 ? "" : "s"} ${successMsg}.`,
+      });
+    } catch (e) {
+      const err = e as { error?: string; message?: string };
+      setToast({
+        type: TOAST_TYPE.ERROR,
+        title: "Update failed",
+        message: err?.error || err?.message || "Unknown error",
+      });
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  const handleStateChange = (newStateId: string) =>
+    handleBulkUpdate({ state_id: newStateId }, "moved to new state");
+
+  const handlePriorityChange = (newPriority: TIssuePriorities) =>
+    handleBulkUpdate({ priority: newPriority }, "priority updated");
+
+  const handleAssigneesChange = (newAssigneeIds: string[]) =>
+    handleBulkUpdate({ assignee_ids: newAssigneeIds }, "assignees updated");
 
   const handleArchive = async () => {
     setIsWorking(true);
@@ -147,11 +213,67 @@ export const BulkActionBar = observer(function BulkActionBar(props: Props) {
   return (
     <>
       <div className={cn("sticky bottom-0 left-0 z-[2] grid place-items-center px-3.5 py-3", className)}>
-        <div className="flex items-center gap-2 rounded-md border border-subtle bg-layer-1 px-3 py-2 shadow-lg">
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-subtle bg-layer-1 px-3 py-2 shadow-lg">
           <span className="text-13 font-medium text-primary">
             {count} selected
           </span>
           <span className="h-4 w-px bg-subtle" />
+
+          {/* PATCH v1.27b: State dropdown (solo se same project) */}
+          {sameProjectId ? (
+            <StateDropdown
+              projectId={sameProjectId}
+              value={null}
+              onChange={handleStateChange}
+              buttonVariant="border-with-text"
+              placeholder="Set state"
+              disabled={isWorking}
+            />
+          ) : (
+            <Tooltip tooltipContent="Select work items from the same project to change state">
+              <button
+                type="button"
+                disabled
+                className="cursor-not-allowed rounded-sm border border-subtle px-2.5 py-1.5 text-12 text-placeholder"
+              >
+                Set state
+              </button>
+            </Tooltip>
+          )}
+
+          {/* PATCH v1.27b: Priority dropdown (sempre attivo) */}
+          <PriorityDropdown
+            value={null}
+            onChange={handlePriorityChange}
+            buttonVariant="border-with-text"
+            placeholder="Set priority"
+            disabled={isWorking}
+          />
+
+          {/* PATCH v1.27b: Assignee dropdown */}
+          <MemberDropdown
+            value={[]}
+            onChange={handleAssigneesChange}
+            multiple
+            projectId={sameProjectId}
+            buttonVariant="border-with-text"
+            placeholder="Set assignees"
+            disabled={isWorking}
+          />
+
+          <span className="h-4 w-px bg-subtle" />
+
+          {/* PATCH v1.27b: Move to project */}
+          <Button
+            variant="neutral-primary"
+            size="sm"
+            prependIcon={<ArrowRightLeft className="size-3.5" />}
+            onClick={() => setShowMoveModal(true)}
+            disabled={isWorking}
+          >
+            Move
+          </Button>
+
           <Button
             variant="neutral-primary"
             size="sm"
@@ -170,6 +292,7 @@ export const BulkActionBar = observer(function BulkActionBar(props: Props) {
           >
             Delete
           </Button>
+
           <span className="h-4 w-px bg-subtle" />
           <button
             type="button"
@@ -182,6 +305,14 @@ export const BulkActionBar = observer(function BulkActionBar(props: Props) {
           </button>
         </div>
       </div>
+
+      {/* PATCH v1.27b: Bulk move modal */}
+      <BulkMoveIssueModal
+        isOpen={showMoveModal}
+        onClose={() => setShowMoveModal(false)}
+        issueIds={selectedEntityIds}
+        onAfterMove={() => clearSelection()}
+      />
 
       {/* Delete confirmation */}
       <Transition.Root show={confirmDelete} as={Fragment}>

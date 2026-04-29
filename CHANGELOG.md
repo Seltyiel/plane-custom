@@ -6,6 +6,42 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.27b] - 2026-04-29
+
+### Aggiunto
+- **Bulk change state**: dropdown stock `StateDropdown`. Visibile solo se tutti i task selezionati sono dello stesso project (state e' project-scoped). Multi-project: pulsante disabled con tooltip esplicativo.
+- **Bulk change priority**: dropdown stock `PriorityDropdown`. Enum globale, sempre attivo.
+- **Bulk add assignees**: dropdown stock `MemberDropdown` multiple. `projectId` passato solo se same project (altrimenti workspace-wide).
+- **Bulk move to project**: nuovo `BulkMoveIssueModal` che chiama `IssueMoveService.moveIssue` (v1.24a) in loop con `Promise.allSettled`. Toast riassuntivo (success / partial / failure).
+
+### Modificato
+- `bulk-action-bar.tsx`: 4 nuove azioni inline tra count e archive/delete.
+
+### Note
+- State/priority/assignee passano per `bulkOperations` stock (`/projects/<projectId>/bulk-operation-issues/`). Group by project_id come per archive/delete.
+- Move: ogni task chiamato indipendentemente; failure di uno non blocca gli altri.
+
+---
+
+## [v1.27a] - 2026-04-29
+
+### Aggiunto
+- **Bulk actions MVP**: Archive + Delete su N task selezionati in List layout.
+- **Vera barra azioni** in fondo alla pagina (sostituisce l'upgrade banner CE "Upgrade to Plane One").
+- Conferme dialog per delete e archive.
+- Group by `project_id` per supportare bulk in workspace views (gli endpoint stock sono scoped per project).
+
+### Modificato
+- `list/block.tsx`: rimosso gate `projectId &&` davanti al checkbox. Il sistema multi-select stock funzionava solo in project context; ora visibile on-hover anche in workspace views/Your Work.
+
+### Note
+- Riusa il sistema stock `useMultipleSelectStore` + `selectionHelpers` (niente store custom).
+- v1.27b in roadmap: Change state, Change priority, Add assignee.
+- v1.27c in roadmap: Bulk move to project (riusa endpoint v1.24).
+- v1.27d in roadmap: multi-select in Spreadsheet/Kanban/Calendar/Gantt.
+
+---
+
 ## [v1.26] - 2026-04-29
 
 ### Aggiunto

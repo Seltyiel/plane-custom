@@ -21,6 +21,73 @@ import { Button } from "@plane/propel/button";
 // feature delle versioni precedenti il quick-add inline funziona ora anche
 // in Workspace Views, Your Work, Calendar workspace.
 //
+// v1.27b: Bulk actions estese (state, priority, assignee, move to project).
+//   - bulk-action-bar.tsx: aggiunti 4 dropdown/pulsanti stock-driven.
+//     * StateDropdown (project-scoped): visibile solo se tutti i task
+//       selezionati sono dello stesso project. In multi-project mostra un
+//       pulsante disabled con tooltip esplicativo.
+//     * PriorityDropdown: enum globale, sempre attivo.
+//     * MemberDropdown multiple: assignee picker. projectId passato solo se
+//       same project, altrimenti workspace-wide member list.
+//     * Move button: apre BulkMoveIssueModal.
+//   - bulk-move-issue-modal.tsx (nuovo): variante bulk del v1.24c.
+//     Promise.allSettled cosi' un fallimento non blocca gli altri. Toast
+//     riassuntivo finale (success / partial / failure).
+//
+//   Backend: bulkOperations stock per state/priority/assignee. Endpoint
+//   stock /api/workspaces/<slug>/projects/<projectId>/bulk-operation-issues/.
+//   Group by project_id come per archive/delete.
+//
+//   Verifica build:
+//     1. Seleziona >0 task: la barra ora ha 4 controlli in piu' (Set state,
+//        Set priority, Set assignees, Move).
+//     2. Stesso project: Set state attivo. Multi project: Set state grigio
+//        con tooltip "Same project required".
+//     3. Set priority Urgent -> tutti i selezionati passano a Urgent.
+//     4. Set assignees -> aggiungi 1 membro -> tutti i selezionati ricevono
+//        quel assignee (existing assignees sostituiti).
+//     5. Move -> seleziona target project -> tutti i task vengono spostati
+//        (con nuovo identifier). Toast riassuntivo.
+//
+// v1.27a: Bulk actions MVP (selection + archive + delete in List layout).
+//   Plane stock ha gia' un sistema multi-select (MultipleSelectEntityAction
+//   + useMultipleSelectStore + selectionHelpers) ma la barra di azioni
+//   reale e' una feature paid: la CE (Community Edition) renderizza solo
+//   un upgrade banner "Upgrade to Plane One".
+//
+//   Patch:
+//   - apps/web/core/components/issues/bulk-operations/bulk-action-bar.tsx
+//     (nuovo): vera barra fixed in basso, riusa useMultipleSelectStore
+//     stock e selectionHelpers. Archive + Delete con dialog di conferma.
+//     Group by project_id per supportare bulk in workspace views (gli
+//     endpoint stock bulkArchiveIssues/bulkDeleteIssues sono scoped per
+//     project, quindi chiamiamo in parallelo).
+//   - apps/web/ce/components/issues/bulk-operations/root.tsx: sostituito
+//     il render del BulkOperationsUpgradeBanner con BulkActionBar.
+//   - apps/web/core/components/issues/issue-layouts/list/block.tsx:
+//     rimosso il gate `projectId &&` davanti al checkbox di selezione,
+//     cosi' compare on-hover anche in workspace views/your-work. La
+//     logica disabled si adatta al context (project vs workspace).
+//
+//   Cosa NON fa v1.27a:
+//   - Bulk change state / priority / assignee -> v1.27b.
+//   - Bulk move to project -> riusa v1.24 in loop (v1.27c).
+//   - Multi-select in Spreadsheet/Kanban/Calendar/Gantt -> v1.27d.
+//   - Shift+click range select -> nice to have, posticipato.
+//
+//   Verifica build:
+//     1. /<slug>/projects/<projectId>/issues/ in List layout: hover su
+//        un task -> appare il checkbox a sinistra. Click -> selezionato.
+//     2. Selezionando >0 task: in fondo alla pagina compare la barra
+//        "{N} selected" + Archive + Delete + X (clear).
+//     3. Click Archive -> dialog conferma -> archive bulk -> task spariti
+//        dalla view, toast success.
+//     4. Click Delete -> dialog conferma "permanent" -> delete bulk -> task
+//        spariti, toast success.
+//     5. Stesso comportamento in workspace views (/<slug>/workspace-views/
+//        <viewId>) e Your Work (/<slug>/profile/<myId>/...). Group by
+//        project_id automatico per le chiamate API.
+//
 // v1.26: My Dashboard sopra la home workspace stock.
 //   - apps/api/plane/app/views/workspace/dashboard.py (v1.26a, nuovo file):
 //     endpoint GET /api/workspaces/<slug>/me/dashboard/?user_id=<uuid>.
@@ -799,7 +866,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.26";
+const CUSTOM_PATCH_TAG = "PATCHED v1.27b";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states
