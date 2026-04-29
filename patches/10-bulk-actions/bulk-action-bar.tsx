@@ -95,32 +95,56 @@ export const BulkActionBar = observer(function BulkActionBar(props: Props) {
 
   const count = selectedEntityIds.length;
 
-  // PATCH v1.27b: bulk update properties (state/priority/assignee) tramite
-  // bulkOperations stock. Group by project_id e chiamate parallele.
+  // PATCH v1.27b hotfix: bulk update properties.
+  // L'endpoint stock /bulk-operation-issues/ NON esiste in CE (e' paid in
+  // Plane One -> 404 "Page not found"). Fallback: loop con patchIssue
+  // (endpoint stock /projects/<projectId>/issues/<id>/) per ogni task.
+  // Promise.allSettled cosi' un fallimento non blocca gli altri.
   const handleBulkUpdate = async (
     properties: Record<string, unknown>,
     successMsg: string
   ): Promise<void> => {
     setIsWorking(true);
     try {
-      await Promise.all(
-        Object.entries(groupedByProject).map(([projectId, issueIds]) =>
-          issueService.bulkOperations(slug, projectId, { issue_ids: issueIds, properties })
-        )
-      );
-      // Aggiorna cache ottimisticamente
-      selectedEntityIds.forEach((id) => {
-        try {
-          updateIssueInCache(id, properties);
-        } catch {
-          /* best-effort */
+      const tasks = selectedEntityIds.map(async (issueId) => {
+        const issue = getIssueById(issueId);
+        if (!issue?.project_id) return;
+        return issueService.patchIssue(slug, issue.project_id, issueId, properties);
+      });
+      const results = await Promise.allSettled(tasks);
+      const fulfilled = results.filter((r) => r.status === "fulfilled").length;
+      const rejected = results.length - fulfilled;
+
+      // Aggiorna cache ottimisticamente solo per quelli andati a buon fine.
+      results.forEach((r, i) => {
+        if (r.status === "fulfilled") {
+          try {
+            updateIssueInCache(selectedEntityIds[i], properties);
+          } catch {
+            /* best-effort */
+          }
         }
       });
-      setToast({
-        type: TOAST_TYPE.SUCCESS,
-        title: "Updated",
-        message: `${count} work item${count === 1 ? "" : "s"} ${successMsg}.`,
-      });
+
+      if (rejected === 0) {
+        setToast({
+          type: TOAST_TYPE.SUCCESS,
+          title: "Updated",
+          message: `${fulfilled} work item${fulfilled === 1 ? "" : "s"} ${successMsg}.`,
+        });
+      } else if (fulfilled === 0) {
+        setToast({
+          type: TOAST_TYPE.ERROR,
+          title: "Update failed",
+          message: `All ${rejected} update${rejected === 1 ? "" : "s"} failed.`,
+        });
+      } else {
+        setToast({
+          type: TOAST_TYPE.WARNING,
+          title: "Partial update",
+          message: `${fulfilled} updated, ${rejected} failed.`,
+        });
+      }
     } catch (e) {
       const err = e as { error?: string; message?: string };
       setToast({

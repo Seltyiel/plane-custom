@@ -140,13 +140,18 @@ class MyDashboardEndpoint(BaseAPIView):
 
         # Base queryset: issue assegnate al target_user, in workspace,
         # progetti accessibili al requester, non archiviate, non eliminate.
+        # PATCH v1.30 hotfix: .distinct() necessario perche' filtrare per
+        # `assignees=target_user` (relazione M2M tramite IssueAssignee) +
+        # `state__group__in` (JOIN con State) puo' produrre righe duplicate
+        # (es. piu' righe IssueAssignee per stesso issue, o JOIN multipli).
+        # Senza distinct: count gonfiati e issue duplicate nel response.
         base = Issue.objects.filter(
             workspace=workspace,
             project_id__in=list(accessible_project_ids),
             assignees=target_user,
             archived_at__isnull=True,
             deleted_at__isnull=True,
-        )
+        ).distinct()
 
         # Filtro "active" su state group.
         active_q = Q(state__group__in=ACTIVE_STATE_GROUPS)

@@ -66,6 +66,17 @@ const KPICard = ({ label, value, icon: Icon, tone = "neutral" }: TKPIProps) => {
 // PATCH v1.30: weekday labels (Lun-Dom)
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+// PATCH v1.30 hotfix: ISO date string LOCAL (no timezone shift).
+// `Date#toISOString()` ritorna UTC -> in fuso orario non-UTC il giorno
+// risulta shiftato di +/- 1 rispetto al label visualizzato. Costruiamo
+// manualmente "YYYY-MM-DD" dal local Date.
+const localDateIso = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
 type TWeeklyCalendarProps = {
   issues: TIssue[];
   weekRange: { monday: string; sunday: string } | undefined;
@@ -89,11 +100,12 @@ const WeeklyCalendar = observer(function WeeklyCalendar(props: TWeeklyCalendarPr
       start.setHours(0, 0, 0, 0);
     }
     const out: { iso: string; label: string; dayNum: number; isToday: boolean }[] = [];
-    const todayIso = new Date().toISOString().split("T")[0];
+    // PATCH v1.30 hotfix: localDateIso (no UTC shift)
+    const todayIso = localDateIso(new Date());
     for (let i = 0; i < 7; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
-      const iso = d.toISOString().split("T")[0];
+      const iso = localDateIso(d);
       out.push({
         iso,
         label: WEEKDAY_LABELS[i],

@@ -21,6 +21,35 @@ import { Button } from "@plane/propel/button";
 // feature delle versioni precedenti il quick-add inline funziona ora anche
 // in Workspace Views, Your Work, Calendar workspace.
 //
+// v1.27b hotfix: bulk operations endpoint 404.
+//   `IssueService.bulkOperations()` chiama
+//     POST /api/workspaces/<slug>/projects/<projectId>/bulk-operation-issues/
+//   Endpoint che NON esiste in CE (e' paid in Plane One). Risultato:
+//   ogni Set state/priority/assignees -> 404 "Page not found".
+//   Fix: invece di chiamare l'endpoint batch, faccio loop con
+//   `patchIssue` (endpoint singolo /projects/<projectId>/issues/<id>/)
+//   per ogni task selezionato. Promise.allSettled cosi' un fallimento
+//   non blocca gli altri. Toast riassuntivo (success/partial/failure).
+//   Costo: piu' chiamate HTTP per N task, ma compatibile con CE.
+//
+// v1.30 hotfix #2: duplicate work item nel WeeklyCalendar e KPI gonfiati.
+//   Causa: il queryset base in /me/dashboard/ filtra `assignees=target_user`
+//   (M2M JOIN tramite IssueAssignee). Senza .distinct(), se ci sono righe
+//   IssueAssignee soft-deleted oltre a quella attiva (default manager
+//   include entrambe), una stessa issue compare N volte. Sintomo: 3 task
+//   identici nel calendario, KPI assigned/overdue gonfiati.
+//   Fix: aggiunto .distinct() al base queryset. Tutti i sub-queryset
+//   (today, overdue, week) e count derivano da base, quindi una sola
+//   modifica sistema sia liste che count.
+//
+// v1.30 hotfix: timezone shift nel WeeklyCalendar.
+//   `Date#toISOString()` ritorna UTC. In fuso orario non-UTC (es.
+//   Europe/Rome UTC+2) il giorno locale alla mezzanotte e' il giorno
+//   precedente in UTC -> i 7 giorni della griglia avevano `iso` shiftato
+//   di -1 vs il label visualizzato. Risultato: task con target_date ieri
+//   compariva nella colonna "oggi" perche' iso match. Fix: costruiamo
+//   "YYYY-MM-DD" localmente con getFullYear/getMonth/getDate.
+//
 // v1.30: Mini-calendario settimanale nella MyDashboard.
 //   - Backend (api-dashboard-view.py): endpoint /me/dashboard/ esteso con
 //     `week_issues` (tutti i task con target_date in [Lun, Dom] della
