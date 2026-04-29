@@ -126,6 +126,9 @@ class MyDashboardEndpoint(BaseAPIView):
         # Vogliamo "questa settimana fino a domenica inclusa".
         days_to_sunday = 6 - today.weekday()  # 0 se oggi e' domenica
         sunday = today + timedelta(days=days_to_sunday)
+        # PATCH v1.30: anche il lunedi' della settimana corrente per il
+        # mini-calendario settimanale.
+        monday = today - timedelta(days=today.weekday())
 
         # Project a cui il requesting user (NON il target) ha accesso.
         accessible_project_ids = ProjectMember.objects.filter(
@@ -167,6 +170,16 @@ class MyDashboardEndpoint(BaseAPIView):
             .order_by("target_date", "-priority")[:TOP_LIMIT]
         )
 
+        # PATCH v1.30: tutti i task della settimana corrente (Lun-Dom) con
+        # target_date in range. Cap a 100 per evitare payload pesanti se
+        # un utente ha tante deadlines in una settimana.
+        WEEK_CAP = 100
+        week_qs = (
+            base.filter(active_q, target_date__gte=monday, target_date__lte=sunday)
+            .select_related("state", "project")
+            .order_by("target_date", "-priority", "name")[:WEEK_CAP]
+        )
+
         return Response(
             {
                 "user": _serialize_user(target_user),
@@ -178,6 +191,12 @@ class MyDashboardEndpoint(BaseAPIView):
                 },
                 "today_issues": _DashboardIssueSerializer(today_qs, many=True).data,
                 "overdue_issues": _DashboardIssueSerializer(overdue_qs, many=True).data,
+                # PATCH v1.30: week_issues per il mini-calendario settimanale.
+                "week_issues": _DashboardIssueSerializer(week_qs, many=True).data,
+                "week_range": {
+                    "monday": monday.isoformat(),
+                    "sunday": sunday.isoformat(),
+                },
             },
             status=status.HTTP_200_OK,
         )

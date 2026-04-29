@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  * See the LICENSE file for details.
  *
- * PATCH (plane-custom) v1.26c:
+ * PATCH (plane-custom) v1.26c + v1.30:
  *  Componente MyDashboard inserito SOPRA WorkspaceHomeView (la home stock
  *  rimane sotto, scrollabile). Mostra:
  *    - hero greeting con avatar + (per admin/member) dropdown "View as: <user>"
  *    - 4 KPI card: Total assigned, Due today, Overdue, This week
+ *    - v1.30: WeeklyCalendar (7 colonne Lun-Dom) con task settimana corrente
  *    - 2 colonne: lista Today (top 5) + lista Overdue (top 5)
- *    - click su una row -> apre peek-overview del task
+ *    - click su una row/card -> apre peek-overview del task
  */
 
 import { useMemo, useState } from "react";
@@ -61,6 +62,116 @@ const KPICard = ({ label, value, icon: Icon, tone = "neutral" }: TKPIProps) => {
     </div>
   );
 };
+
+// PATCH v1.30: weekday labels (Lun-Dom)
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+type TWeeklyCalendarProps = {
+  issues: TIssue[];
+  weekRange: { monday: string; sunday: string } | undefined;
+  workspaceSlug: string;
+};
+
+const WeeklyCalendar = observer(function WeeklyCalendar(props: TWeeklyCalendarProps) {
+  const { issues, weekRange, workspaceSlug } = props;
+  const { setPeekIssue } = useIssueDetail();
+
+  // Calcola i 7 giorni della settimana corrente (Lun-Dom).
+  const days = useMemo(() => {
+    const start = weekRange ? new Date(weekRange.monday + "T00:00:00") : new Date();
+    if (!weekRange) {
+      // fallback client-side: Lun di questa settimana
+      const today = new Date();
+      const dayOfWeek = today.getDay(); // Sun=0..Sat=6
+      const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      start.setTime(today.getTime());
+      start.setDate(today.getDate() + diffToMonday);
+      start.setHours(0, 0, 0, 0);
+    }
+    const out: { iso: string; label: string; dayNum: number; isToday: boolean }[] = [];
+    const todayIso = new Date().toISOString().split("T")[0];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const iso = d.toISOString().split("T")[0];
+      out.push({
+        iso,
+        label: WEEKDAY_LABELS[i],
+        dayNum: d.getDate(),
+        isToday: iso === todayIso,
+      });
+    }
+    return out;
+  }, [weekRange]);
+
+  // Raggruppa task per target_date.
+  const issuesByDay = useMemo(() => {
+    const map: Record<string, TIssue[]> = {};
+    issues.forEach((iss) => {
+      if (!iss.target_date) return;
+      const day = String(iss.target_date).split("T")[0];
+      if (!map[day]) map[day] = [];
+      map[day].push(iss);
+    });
+    return map;
+  }, [issues]);
+
+  const handleClick = (issue: TIssue) => {
+    if (!issue.id || !issue.project_id) return;
+    setPeekIssue({ workspaceSlug, projectId: issue.project_id, issueId: issue.id });
+  };
+
+  const VISIBLE_PER_DAY = 5;
+
+  return (
+    <div className="mb-4">
+      <div className="mb-2 flex items-center gap-2">
+        <CalendarClock className="size-4 text-secondary" />
+        <h3 className="text-13 font-semibold text-primary">This week</h3>
+      </div>
+      <div className="grid grid-cols-7 gap-1.5 rounded-md border border-subtle bg-layer-1 p-2">
+        {days.map((day) => {
+          const dayIssues = issuesByDay[day.iso] ?? [];
+          const visible = dayIssues.slice(0, VISIBLE_PER_DAY);
+          const hidden = dayIssues.length - visible.length;
+          return (
+            <div
+              key={day.iso}
+              className={`flex min-h-[120px] flex-col rounded-sm border ${
+                day.isToday ? "border-accent-strong bg-accent-primary/5" : "border-subtle bg-layer-transparent"
+              }`}
+            >
+              <div
+                className={`px-1.5 py-1 text-center text-11 font-medium ${
+                  day.isToday ? "text-accent-primary" : "text-tertiary"
+                }`}
+              >
+                {day.label}{" "}
+                <span className={day.isToday ? "font-semibold" : ""}>{day.dayNum}</span>
+              </div>
+              <div className="flex flex-col gap-1 px-1 pb-1">
+                {visible.map((iss) => (
+                  <button
+                    key={iss.id}
+                    type="button"
+                    onClick={() => handleClick(iss)}
+                    className="rounded-sm bg-layer-2 px-1.5 py-1 text-left text-11 text-primary hover:bg-layer-3"
+                    title={iss.name}
+                  >
+                    <span className="block truncate">{iss.name}</span>
+                  </button>
+                ))}
+                {hidden > 0 && (
+                  <span className="px-1.5 text-10 text-tertiary">+{hidden} more</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
 
 type TDashboardIssueRowProps = {
   issue: TIssue;
@@ -224,6 +335,13 @@ export const MyDashboard = observer(function MyDashboard() {
         <KPICard label="Overdue" value={kpi?.overdue ?? 0} icon={AlertTriangle} tone="danger" />
         <KPICard label="This week" value={kpi?.due_this_week ?? 0} icon={Clock} />
       </div>
+
+      {/* PATCH v1.30: mini-calendario settimanale (Lun-Dom). */}
+      <WeeklyCalendar
+        issues={dashboard?.week_issues ?? []}
+        weekRange={dashboard?.week_range}
+        workspaceSlug={slug}
+      />
 
       {/* Today + Overdue lists */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

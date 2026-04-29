@@ -28,11 +28,19 @@ export type TDashboardUser = {
   avatar_url: string | null;
 };
 
+export type TDashboardWeekRange = {
+  monday: string; // ISO date
+  sunday: string;
+};
+
 export type TDashboardResponse = {
   user: TDashboardUser;
   kpi: TDashboardKPI;
   today_issues: TIssue[];
   overdue_issues: TIssue[];
+  // PATCH v1.30: tutti i task con target_date nella settimana corrente.
+  week_issues: TIssue[];
+  week_range: TDashboardWeekRange;
 };
 
 export class DashboardService extends APIService {
