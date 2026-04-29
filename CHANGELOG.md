@@ -6,6 +6,24 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.26] - 2026-04-29
+
+### Aggiunto
+- **My Dashboard** in cima alla home workspace `/<slug>/`. La home stock (sticky, recents, ecc) resta sotto.
+- **Endpoint backend** `GET /api/workspaces/<slug>/me/dashboard/?user_id=<uuid>` (v1.26a).
+- 4 KPI cards: Total assigned, Due today, Overdue, Due this week (today->sunday).
+- Liste Today (top 5, priority desc) + Overdue (top 5, target_date asc) con click → peek-overview.
+- Hero greeting localizzato sul tempo del giorno (Good morning/afternoon/evening/Working late).
+- Dropdown "**View as: <user>**" per admin/member: permette di vedere la dashboard di altri utenti del workspace.
+- Hook SWR con refresh interval 60s.
+
+### Note
+- Filtro overdue: solo state group in (backlog, unstarted, started). I completed/cancelled non contano.
+- Access-control: solo task di project dove il REQUESTING user (non il target) e' membro attivo. Niente leak cross-project.
+- Mini-calendario settimanale, recent activity feed, quick add inline: rinviati a future iterazioni.
+
+---
+
 ## [v1.25] - 2026-04-29
 
 ### Aggiunto

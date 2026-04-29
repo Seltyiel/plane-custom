@@ -21,6 +21,41 @@ import { Button } from "@plane/propel/button";
 // feature delle versioni precedenti il quick-add inline funziona ora anche
 // in Workspace Views, Your Work, Calendar workspace.
 //
+// v1.26: My Dashboard sopra la home workspace stock.
+//   - apps/api/plane/app/views/workspace/dashboard.py (v1.26a, nuovo file):
+//     endpoint GET /api/workspaces/<slug>/me/dashboard/?user_id=<uuid>.
+//     Default = request.user. Per admin/member del workspace permette di
+//     vedere la dashboard di altri utenti (passing user_id). Filtra "active"
+//     state group (backlog/unstarted/started). Calcola KPI:
+//       - total_assigned, due_today, overdue, due_this_week (today->sunday)
+//     Restituisce anche top 5 today_issues (priority desc) e top 5
+//     overdue_issues (target_date asc). Access-control: solo task di
+//     project dove il REQUESTING user (non il target) e' membro attivo.
+//   - apps/api/plane/app/urls/workspace.py: registra route.
+//   - apps/web/core/services/dashboard.service.ts (v1.26b, nuovo): client.
+//   - apps/web/core/hooks/use-my-dashboard.ts (v1.26b, nuovo): hook SWR
+//     con refresh interval 60s.
+//   - apps/web/core/components/home/my-dashboard.tsx (v1.26c, nuovo):
+//     componente MyDashboard con hero greeting + avatar + (admin) dropdown
+//     "View as: <user>", 4 KPI card (Assigned/Due today/Overdue/This week),
+//     2 colonne Today/Overdue lists. Click su una row apre il peek-overview.
+//   - apps/web/app/(all)/[workspaceSlug]/(projects)/page.tsx: inserisce
+//     <MyDashboard/> SOPRA <WorkspaceHomeView/> stock (la home stock con
+//     sticky/recents resta sotto scrollabile).
+//
+//   Cosa NON fa v1.26:
+//   - Mini-calendario settimanale (rinviato).
+//   - Recent activity feed (rinviato).
+//   - Quick add task nella dashboard (usa il "+" sidebar).
+//
+//   Verifica build:
+//     1. /<slug>/ -> in cima vedi la card "Good morning, <Name>" con avatar.
+//     2. 4 KPI card con i numeri attesi (assigned, today, overdue, week).
+//     3. Today list + Overdue list con i tuoi task. Click apre peek.
+//     4. Se sei admin/member: dropdown "View as..." in alto a destra ->
+//        scegli un altro utente -> vedi la sua dashboard (admin only).
+//     5. La home stock (sticky, recents, ecc) e' ancora visibile sotto.
+//
 // v1.25: Move modal + project visualization + filter project su Your Work.
 //   - move-issue-modal.tsx (v1.25a): include workspaceHiddenProjectId come
 //     opzione target del picker. Stock joinedProjectIds lo filtra (v1.22b)
@@ -764,7 +799,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.25";
+const CUSTOM_PATCH_TAG = "PATCHED v1.26";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

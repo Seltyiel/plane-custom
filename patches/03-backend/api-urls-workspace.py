@@ -77,6 +77,8 @@ from plane.app.views.workspace.state import (
 from plane.app.views.workspace.workspace_project import WorkspaceProjectEndpoint
 # PATCH v1.24a: move issue across projects.
 from plane.app.views.workspace.issue_move import MoveIssueEndpoint
+# PATCH v1.26a: my dashboard KPI endpoint.
+from plane.app.views.workspace.dashboard import MyDashboardEndpoint
 
 
 urlpatterns = [
@@ -247,6 +249,13 @@ urlpatterns = [
         "workspaces/<str:slug>/issues/<uuid:issue_id>/move/",
         MoveIssueEndpoint.as_view(),
         name="workspace-issue-move",
+    ),
+    # PATCH v1.26a: my dashboard KPI endpoint.
+    # Query params: ?user_id=<uuid> (default = request.user)
+    path(
+        "workspaces/<str:slug>/me/dashboard/",
+        MyDashboardEndpoint.as_view(),
+        name="workspace-my-dashboard",
     ),
     path(
         "workspaces/<str:slug>/estimates/",

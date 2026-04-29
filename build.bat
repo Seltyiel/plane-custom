@@ -301,6 +301,22 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\08-move-issue\issue-detail-quick-actions.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\quick-action-dropdowns\issue-detail.tsx" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.26a: dashboard backend endpoint /me/dashboard/.
+copy /Y "%PATCHES_DIR%\09-dashboard\api-dashboard-view.py" "%PLANE_SRC%\apps\api\plane\app\views\workspace\dashboard.py" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.26b: dashboard service + hook SWR.
+copy /Y "%PATCHES_DIR%\09-dashboard\dashboard-service.ts" "%PLANE_SRC%\apps\web\core\services\dashboard.service.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\09-dashboard\use-my-dashboard.ts" "%PLANE_SRC%\apps\web\core\hooks\use-my-dashboard.ts" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.26c: MyDashboard component + injection nella home page.
+copy /Y "%PATCHES_DIR%\09-dashboard\my-dashboard.tsx" "%PLANE_SRC%\apps\web\core\components\home\my-dashboard.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\09-dashboard\workspace-home-page.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\page.tsx" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.22b: frontend store + service + hook per workspace project fittizio.
 REM   - types/project: IPartialProject.is_hidden
 REM   - project store: filter is_hidden + getter workspaceHiddenProjectId
