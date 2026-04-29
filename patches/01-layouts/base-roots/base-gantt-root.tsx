@@ -67,6 +67,9 @@ export const BaseGanttRoot = observer(function BaseGanttRoot(props: IBaseGanttRo
 
   const storeType = useIssueStoreType() as GanttStoreType;
   const { issues, issuesFilter } = useIssues(storeType);
+  // PATCH v1.23c: issueMap per lookup project_id in workspace context
+  // (drag/resize fallback senza projectId URL).
+  const { issueMap } = useIssues();
   const { fetchIssues, fetchNextIssues, updateIssue, quickAddIssue } = useIssuesActions(storeType);
   const { initGantt } = useTimeLineChart(GANTT_TIMELINE_TYPE.ISSUE);
   // store hooks
@@ -122,7 +125,35 @@ export const BaseGanttRoot = observer(function BaseGanttRoot(props: IBaseGanttRo
         target_date?: string;
       }[]
     ) => {
-      if (!workspaceSlug || !projectId) return Promise.resolve();
+      if (!workspaceSlug) return Promise.resolve();
+
+      // PATCH v1.23c: in workspace context (no projectId URL) il drag/resize
+      // dei block in Gantt veniva silenziosamente scartato (Promise.resolve).
+      // Stock issues.updateIssueDates richiede projectId nell'URL. In workspace
+      // facciamo loop manuale chiamando updateIssue per ciascun task con
+      // il project_id ricavato dalla issue stessa.
+      if (!projectId) {
+        return Promise.all(
+          updates.map((u) => {
+            const issue = issueMap?.[u.id];
+            if (!issue?.project_id || !updateIssue) return Promise.resolve();
+            const payload: Partial<TIssue> = {};
+            if (u.start_date !== undefined) payload.start_date = u.start_date;
+            if (u.target_date !== undefined) payload.target_date = u.target_date;
+            return updateIssue(issue.project_id, u.id, payload);
+          })
+        )
+          .then(() => undefined)
+          .catch(() => {
+            setToast({
+              type: TOAST_TYPE.ERROR,
+              title: t("toast.error"),
+              message: "Error while updating work item dates, Please try again Later",
+            });
+          });
+      }
+
+      // Project context: usa endpoint batch stock.
       return issues.updateIssueDates(workspaceSlug.toString(), updates, projectId.toString()).catch(() => {
         setToast({
           type: TOAST_TYPE.ERROR,
@@ -131,7 +162,7 @@ export const BaseGanttRoot = observer(function BaseGanttRoot(props: IBaseGanttRo
         });
       });
     },
-    [issues, projectId, workspaceSlug]
+    [issues, projectId, workspaceSlug, issueMap, updateIssue, t]
   );
 
   const quickAdd =

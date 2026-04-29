@@ -44,15 +44,54 @@ export const useMoveIssue = () => {
     try {
       const updated = await issueMoveService.moveIssue(workspaceSlug.toString(), issueId, payload);
 
-      // Rimuovi dalla cache globale cosi' il task sparisce dalla view
-      // corrente. Quando l'utente navighera' al target project, lo store
-      // del project lo riprendera' fresco dal backend.
+      // PATCH v1.24b hotfix3: ORDINE CRITICO.
+      // removeIssueFromList(id) internamente fa:
+      //   const issue = rootIssueStore.issues.getIssueById(id);
+      //   updateIssueList(undefined, issue, DELETE);
+      // Cioe' RICAVA l'issue dall'issueMap globale prima di toglierlo dai
+      // grouped lists. Se rimuoviamo prima dall'issueMap globale, il
+      // lookup ritorna undefined e updateIssueList non fa nulla -> riga
+      // fantasma che resta finche' non si fa refresh.
+      // Fix: PRIMA rimuovo dai grouped lists (mentre l'issue e' ancora in
+      // cache), POI dall'issueMap globale.
+      const candidateStores = [
+        context.issue.workspaceIssues,
+        context.issue.profileIssues,
+        context.issue.projectIssues,
+        context.issue.cycleIssues,
+        context.issue.moduleIssues,
+        context.issue.projectViewIssues,
+        context.issue.archivedIssues,
+        context.issue.projectEpics,
+      ];
+      candidateStores.forEach((store) => {
+        try {
+          (store as { removeIssueFromList?: (id: string) => void })?.removeIssueFromList?.(issueId);
+        } catch {
+          /* best-effort */
+        }
+      });
+
+      // Ora rimuovi dalla cache globale.
       try {
         context.issue.issues.removeIssue(issueId);
       } catch (cleanupErr) {
-        // Cleanup best-effort: non blocchiamo per errori di store.
         // eslint-disable-next-line no-console
         console.warn("[move-issue] cache cleanup failed:", cleanupErr);
+      }
+
+      // PATCH v1.24b hotfix2: chiudi il peek-overview se aperto sul task
+      // appena spostato. Senza questo, il pannello peek resta aperto su un
+      // issueId che non esiste piu' nella cache -> rendering vuoto.
+      try {
+        const issueDetail = context.issue.issueDetail as
+          | { peekIssue?: { issueId?: string }; setPeekIssue?: (val: undefined) => void }
+          | undefined;
+        if (issueDetail?.peekIssue?.issueId === issueId) {
+          issueDetail.setPeekIssue?.(undefined);
+        }
+      } catch {
+        /* best-effort */
       }
 
       setToast({

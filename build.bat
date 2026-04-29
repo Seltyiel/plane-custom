@@ -343,6 +343,22 @@ REM priority, assignee, move to project).
 copy /Y "%PATCHES_DIR%\10-bulk-actions\bulk-move-issue-modal.tsx" "%PLANE_SRC%\apps\web\core\components\issues\bulk-operations\bulk-move-issue-modal.tsx" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.27c: multi-select in Spreadsheet layout (rimuove gate
+REM `projectId &&` davanti al checkbox cosi' visibile anche in workspace).
+copy /Y "%PATCHES_DIR%\10-bulk-actions\spreadsheet-issue-row.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\spreadsheet\issue-row.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.28: Export CSV button.
+REM   - export-csv-button.tsx (nuovo): componente riusabile parametrizzato
+REM     per storeType. Esporta i task del cache come CSV con BOM UTF-8.
+REM   - workspace-views-header.tsx (modificato): aggiunge il pulsante
+REM     accanto a Display.
+if not exist "%PLANE_SRC%\apps\web\core\components\issues\export" (
+    mkdir "%PLANE_SRC%\apps\web\core\components\issues\export"
+)
+copy /Y "%PATCHES_DIR%\11-export\export-csv-button.tsx" "%PLANE_SRC%\apps\web\core\components\issues\export\export-csv-button.tsx" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.22b: frontend store + service + hook per workspace project fittizio.
 REM   - types/project: IPartialProject.is_hidden
 REM   - project store: filter is_hidden + getter workspaceHiddenProjectId

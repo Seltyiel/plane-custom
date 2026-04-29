@@ -21,6 +21,94 @@ import { Button } from "@plane/propel/button";
 // feature delle versioni precedenti il quick-add inline funziona ora anche
 // in Workspace Views, Your Work, Calendar workspace.
 //
+// v1.23c+ hotfix bundle:
+//   - Gantt drag persistence in workspace context (vedi sotto).
+//   - MoveIssueModal z-index + stopPropagation: era z-20, sotto il peek-
+//     overview (z-30+). Cliccando il modale chiudeva il peek + il modale
+//     stesso. Alzato a z-[60]. Plus stopPropagation sul Dialog.Panel
+//     perche' anche con z-index alto il click DENTRO il modale veniva
+//     ricevuto dall'outside-click detector del peek (event bubble) ->
+//     peek chiuso -> modale unmounted. Lo bloccchiamo a livello DOM.
+//   - useMoveIssue cleanup post-move: dopo move, oltre a removeIssue
+//     dalla mappa globale, rimuovo anche dai groupedIssueIds di tutti
+//     gli store types (best-effort) e chiudo il peek-overview se aperto
+//     sul task spostato. Senza, in Gantt restava una "riga fantasma"
+//     vuota selezionata + pannello peek bianco.
+//     hotfix3: ordine critico. removeIssueFromList(id) lookup-a l'issue
+//     da rootIssueStore.issues.getIssueById(id) e poi chiama
+//     updateIssueList con quell'issue come "before". Se removiamo prima
+//     dall'issueMap globale, il lookup fallisce e la riga resta nei
+//     grouped lists. Ordine corretto: PRIMA grouped, POI globale.
+//   - BulkActionBar z-index: era z-[2], i dropdown (Set state/priority/
+//     assignees) erano coperti dalle righe della lista. Alzato a z-[40].
+//
+// v1.23c hotfix: Gantt drag persistence in workspace context.
+//   In base-gantt-root.tsx riga 125, updateBlockDates esce con
+//     Promise.resolve()
+//   se !projectId URL. In workspace views/your-work il drag aggiornava
+//   ottimisticamente ma niente API call -> al refresh i task tornavano
+//   alla posizione iniziale. Fix: in workspace context, loop su updates
+//   chiamando updateIssue(issue.project_id, ...) per ogni task. Il
+//   project_id viene ricavato dall'issue stessa (issueMap lookup).
+//   Stesso pattern v1.23a/b: sblocco gate `!projectId` per workspace.
+//
+//   Verifica build:
+//     1. Workspace views in Gantt: drag un task -> al rilascio resta
+//        nella nuova posizione (toast nessuno = OK).
+//     2. Drag estremita' (resize handle) -> stessa cosa, persiste.
+//     3. Project views in Gantt: stesso comportamento di prima (usa
+//        l'endpoint batch stock /issue-dates/).
+//
+// v1.27c: multi-select in Spreadsheet layout.
+//   - apps/web/core/components/issues/issue-layouts/spreadsheet/issue-row.tsx
+//     (full replacement): stesso fix di v1.27a su list/block.tsx ma per
+//     Spreadsheet. Rimosso il gate `projectId &&` davanti al checkbox.
+//
+//   La barra azioni appare automaticamente: spreadsheet-view.tsx renderizza
+//   gia' <IssueBulkOperationsRoot> (riga 124), che con v1.27a e' la nostra
+//   BulkActionBar. Cosi' tutti i 6 pulsanti (state, priority, assignee,
+//   move, archive, delete) sono disponibili anche in Spreadsheet.
+//
+//   Calendar/Kanban/Gantt: layout con block non lineari, multi-select
+//   richiederebbe UX dedicata (long-press / shift+click). Rinviato.
+//
+//   Verifica build:
+//     1. /<slug>/projects/<projectId>/issues/ in Spreadsheet: hover su
+//        una riga -> checkbox compare a sinistra del titolo.
+//     2. Click su checkbox -> task selezionato, riga evidenziata.
+//     3. Bottom bar appare con tutti i 6 pulsanti.
+//     4. Stesso comportamento su /<slug>/workspace-views/<viewId> in
+//        Spreadsheet.
+//
+// v1.28: Export CSV dei task della view corrente.
+//   - export-csv-button.tsx (nuovo): componente riusabile parametrizzato
+//     per storeType e contextLabel. Estrae gli ID dal groupedIssueIds
+//     (flat o subgrouped), recupera i dettagli da issueMap + project +
+//     state + member stores, costruisce CSV con escape proprio (virgole,
+//     virgolette, newline) e BOM UTF-8 per Excel. Trigger download via
+//     blob + anchor.tag.click().
+//   - workspace-views-header.tsx (modificato v1.22d): aggiunto pulsante
+//     Export accanto a Display.
+//
+//   Limitazione MVP: esporta solo i task gia' caricati nel cache (rispetta
+//   filtri server-side ma e' paginato). Per export full unpaginated serve
+//   endpoint backend dedicato.
+//
+//   Cosa NON fa v1.28:
+//   - XLSX (richiede SheetJS, rinviato).
+//   - Export su project views, your-work (rinviato — copertura solo
+//     workspace-views per ora).
+//   - Custom columns picker (set fisso di colonne).
+//
+//   Verifica build:
+//     1. /<slug>/workspace-views/<viewId>: nell'header accanto a Display
+//        c'e' un pulsante "Export" con icona download.
+//     2. Click -> download immediato di <slug>-workspace-views-<YYYYMMDD>.csv
+//        con tutti i task della view corrente.
+//     3. Apri il CSV in Excel/Numbers: 11 colonne (Identifier, Title, State,
+//        Priority, Assignees, Start date, Target date, Project, Labels,
+//        Created by, Created at). Accenti corretti grazie al BOM UTF-8.
+//
 // v1.27b: Bulk actions estese (state, priority, assignee, move to project).
 //   - bulk-action-bar.tsx: aggiunti 4 dropdown/pulsanti stock-driven.
 //     * StateDropdown (project-scoped): visibile solo se tutti i task
@@ -866,7 +954,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.27b";
+const CUSTOM_PATCH_TAG = "PATCHED v1.23c";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

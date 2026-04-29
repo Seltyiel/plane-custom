@@ -52,6 +52,8 @@ import { useProject } from "@/hooks/store/use-project";
 import { useUserPermissions } from "@/hooks/store/user";
 import { useAppRouter } from "@/hooks/use-app-router";
 import { GlobalViewLayoutSelection } from "@/plane-web/components/views/helper";
+// PATCH v1.28: export CSV button
+import { ExportCsvButton } from "@/components/issues/export/export-csv-button";
 
 export const GlobalIssuesHeader = observer(function GlobalIssuesHeader() {
   // states
@@ -200,6 +202,8 @@ export const GlobalIssuesHeader = observer(function GlobalIssuesHeader() {
               />
             </FiltersDropdown>
           )}
+          {/* PATCH v1.28: export CSV dei task della view corrente */}
+          <ExportCsvButton storeType={EIssuesStoreType.GLOBAL} contextLabel="workspace-views" />
           {/* PATCH v1.22d: pulsante "+ Add work item" workspace-level. */}
           <Button
             variant="primary"

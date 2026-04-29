@@ -6,6 +6,49 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.23c] - 2026-04-29 (hotfix bundle)
+
+### Fixato
+- **Gantt drag persistence in workspace context**. `base-gantt-root.tsx` riga 125: `updateBlockDates` esce con `Promise.resolve()` se !projectId URL → in workspace views/Your Work il drag aggiornava ottimisticamente ma niente API call → task tornavano indietro al refresh.
+- Stesso fix per il resize delle estremita' (handle drag) — entrambi passano per `updateBlockDates`.
+
+### Modificato
+- In workspace context: loop manuale su `updates` chiamando `updateIssue(issue.project_id, ...)` per ogni task. Project context invariato (usa endpoint batch stock).
+
+### Note
+- Stesso pattern di v1.23a (`isEditingAllowed` PROJECT→WORKSPACE) e v1.23b (Calendar quick-add hover): sblocco di feature gated da `!projectId` URL per workspace context.
+
+### Fixato (z-index bundle)
+- **MoveIssueModal v1.24c**: era `z-20`, finiva sotto al peek-overview (z-30+). Cliccando il modale chiudeva sia il modale che il peek. Alzato a `z-[60]`.
+- **BulkActionBar v1.27a**: era `z-[2]`, i dropdown (Set state/priority/assignees) erano coperti dalle righe della lista al momento dell'apertura. Alzato a `z-[40]`.
+
+---
+
+## [v1.27c] - 2026-04-29
+
+### Aggiunto
+- **Multi-select in Spreadsheet layout**. Stesso pattern di v1.27a su List: rimosso il gate `projectId &&` davanti al checkbox, cosi' visibile on-hover anche in workspace views.
+
+### Note
+- La barra azioni appare automaticamente: `spreadsheet-view.tsx` stock renderizza gia' `<IssueBulkOperationsRoot>`, che con v1.27a e' la nostra `BulkActionBar` con tutti i 6 pulsanti.
+- Calendar/Kanban/Gantt: rinviati. UX richiede pattern dedicato (long-press / shift+click) perche' i layout non sono lineari.
+
+---
+
+## [v1.28] - 2026-04-29
+
+### Aggiunto
+- **Export CSV** dei task della view corrente. Pulsante "Export" nell'header di Workspace Views accanto a "Display".
+- 11 colonne: Identifier, Title, State, Priority, Assignees, Start date, Target date, Project, Labels, Created by, Created at.
+- Filename `<slug>-workspace-views-<YYYYMMDD>.csv` con BOM UTF-8 (Excel compatibile per accenti).
+- Esporta i task del cache (rispetta filtri server-side applicati).
+
+### Note
+- Pure client-side, nessuna dipendenza extra.
+- v1.28b in roadmap: XLSX (con SheetJS), export anche da project views e Your Work, custom columns picker, endpoint backend per full unpaginated export.
+
+---
+
 ## [v1.27b] - 2026-04-29
 
 ### Aggiunto

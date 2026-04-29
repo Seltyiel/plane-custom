@@ -81,7 +81,10 @@ export const MoveIssueModal = observer(function MoveIssueModal(props: Props) {
 
   return (
     <Transition.Root show={isOpen} as={Fragment}>
-      <Dialog as="div" className="relative z-20" onClose={handleClose}>
+      {/* PATCH v1.24c hotfix: z-index alzato a 60 perche' z-20 era sotto al
+          peek-overview (che ha z-30+). Il click sul backdrop del Dialog
+          chiudeva sia il modale che il peek. Adesso il modale e' SOPRA. */}
+      <Dialog as="div" className="relative z-[60]" onClose={handleClose}>
         <Transition.Child
           as={Fragment}
           enter="ease-out duration-300"
@@ -105,7 +108,19 @@ export const MoveIssueModal = observer(function MoveIssueModal(props: Props) {
               leaveFrom="opacity-100 translate-y-0 sm:scale-100"
               leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
             >
-              <Dialog.Panel className="relative w-full max-w-md transform overflow-hidden rounded-lg bg-surface-1 p-5 text-left shadow-xl transition-all">
+              {/* PATCH v1.24c hotfix2: stopPropagation sui mouse event del
+                  Panel. Il peek-overview sottostante ha un outside-click
+                  detector che, quando l'utente clicca DENTRO il modale,
+                  riceve l'evento via bubble e chiude il peek (e con esso
+                  il modale come children). Lo blocchiamo qui.
+                  N.B. questo NON blocca il click sul backdrop (Headless UI
+                  rileva outside via Dialog API, non via DOM event), quindi
+                  la chiusura cliccando fuori funziona ancora. */}
+              <Dialog.Panel
+                className="relative w-full max-w-md transform overflow-hidden rounded-lg bg-surface-1 p-5 text-left shadow-xl transition-all"
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
                 <div className="mb-3 flex items-start justify-between">
                   <div className="flex items-center gap-2">
                     <ArrowRightLeft className="size-4 text-secondary" />

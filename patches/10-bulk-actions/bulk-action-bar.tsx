@@ -212,7 +212,10 @@ export const BulkActionBar = observer(function BulkActionBar(props: Props) {
 
   return (
     <>
-      <div className={cn("sticky bottom-0 left-0 z-[2] grid place-items-center px-3.5 py-3", className)}>
+      {/* PATCH v1.27a hotfix: z-[2] era troppo basso, i dropdown (Set state/
+          priority/assignees) erano coperti dalle righe della lista. Alzato a
+          z-[40] cosi' resta sopra a tutto il contenuto della view. */}
+      <div className={cn("sticky bottom-0 left-0 z-[40] grid place-items-center px-3.5 py-3", className)}>
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-subtle bg-layer-1 px-3 py-2 shadow-lg">
           <span className="text-13 font-medium text-primary">
             {count} selected
