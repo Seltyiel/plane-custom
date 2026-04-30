@@ -21,6 +21,15 @@ import { Button } from "@plane/propel/button";
 // feature delle versioni precedenti il quick-add inline funziona ora anche
 // in Workspace Views, Your Work, Calendar workspace.
 //
+// v1.32 RITIRATA (rollback v1.32r):
+//   Avevo aggiunto un <RecentActivityWidget/> con presetFilter="issue"
+//   sotto Today/Overdue. Si e' rivelato duplicato del widget Recents
+//   stock nel WorkspaceHomeView immediatamente sotto: nel workspace
+//   l'activity recente e' quasi tutta su work item, quindi i due blocchi
+//   mostravano la stessa lista (contenuto identico, sezione doppia).
+//   Rollback: rimossi import e sezione dalla MyDashboard. La home
+//   torna come prima, con la sola activity feed stock di Plane sotto.
+//
 // v1.31b: 4 latent permission bug nei quick-action dropdown e nel
 //   workspace-draft delete modal.
 //   - quick-action-dropdowns/archived-issue.tsx, cycle-issue.tsx,
@@ -1056,7 +1065,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.31b";
+const CUSTOM_PATCH_TAG = "PATCHED v1.32r";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

@@ -11,6 +11,12 @@
  *    - v1.30: WeeklyCalendar (7 colonne Lun-Dom) con task settimana corrente
  *    - 2 colonne: lista Today (top 5) + lista Overdue (top 5)
  *    - click su una row/card -> apre peek-overview del task
+ *
+ *  v1.32 ritirata: avevo aggiunto un <RecentActivityWidget/> con
+ *  presetFilter="issue" sotto Today/Overdue. Si sovrapponeva al widget
+ *  Recents stock nel WorkspaceHomeView (l'activity nel workspace e'
+ *  per lo piu' su work item, quindi i due blocchi mostravano la stessa
+ *  lista). Rollback completo, nessuna activity feed dentro la MyDashboard.
  */
 
 import { useMemo, useState } from "react";
@@ -401,6 +407,16 @@ export const MyDashboard = observer(function MyDashboard() {
           )}
         </div>
       </div>
+
+      {/*
+       * PATCH v1.32 RITIRATA: avevo aggiunto qui un <RecentActivityWidget/>
+       * con presetFilter="issue" pensando di restringere ai soli work item.
+       * In pratica nel workspace l'activity e' quasi tutta su issue, quindi
+       * il blocco filtrato e il widget Recents stock nel WorkspaceHomeView
+       * sotto mostravano la stessa lista -> sezione duplicata senza valore.
+       * Rollback: nessuna activity feed dentro la MyDashboard. L'utente
+       * usa quella stock subito sotto.
+       */}
     </div>
   );
 });

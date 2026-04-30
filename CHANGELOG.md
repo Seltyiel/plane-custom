@@ -6,6 +6,24 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.32r] - 2026-04-30 (rollback)
+
+### Rimosso
+- **Recent issue activity dalla MyDashboard**: il blocco `<RecentActivityWidget presetFilter="issue"/>` aggiunto in v1.32 (commit precedente, mai diventato versione effettiva sul prod) si rivelava duplicato del widget Recents stock nel WorkspaceHomeView sotto. Nel workspace l'activity recente e' per lo piu' su work item, quindi i due blocchi mostravano la stessa lista. Rollback: rimossi import `RecentActivityWidget` e sezione finale da `my-dashboard.tsx`. La home torna identica a v1.31b, con la sola activity feed stock di Plane.
+
+### File toccati
+- `patches/09-dashboard/my-dashboard.tsx` (rimosso import e sezione)
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG -> v1.32r)
+
+---
+
+## [v1.32] - 2026-04-29 (RITIRATA, mai stabile)
+
+### Aggiunto (poi rimosso)
+- ~~**Recent issue activity** dentro la MyDashboard~~ — vedi v1.32r per il rollback motivato.
+
+---
+
 ## [v1.31b] - 2026-04-29 (hotfix bundle)
 
 ### Fixato
