@@ -21,6 +21,139 @@ import { Button } from "@plane/propel/button";
 // feature delle versioni precedenti il quick-add inline funziona ora anche
 // in Workspace Views, Your Work, Calendar workspace.
 //
+// v1.33m: REVERT al filter originale per People/team_issues +
+//   fix dei side-effect via Subquery e custom Prefetch.
+//
+//   Le iterazioni v1.33j/k/l avevano cercato di filtrare via i
+//   record IssueAssignee soft-deleted dal filter principale, ma
+//   il side effect e' stato che alcuni task (es. subtask "Test son")
+//   scomparivano. L'utente ha confermato che il comportamento
+//   precedente (v1.19c originale) era corretto.
+//
+//   Nuova strategia: torno al filter `assignees__id=user_id` che
+//   matcha tutta la M2M history, e fixo i side-effect ALTROVE:
+//    - Subquery per time_logged_seconds (NO annotate JOIN che
+//      moltiplica la Sum per N IssueAssignee history)
+//    - Custom Prefetch sugli assignees con filter
+//      `issue_assignee__deleted_at__isnull=True` (lista pulita,
+//      no "+2" fantasma)
+//   .distinct() rimane per de-duplicare la M2M JOIN.
+//
+//   Filtri Hours dropdown (frontend + backend stats period/state)
+//   restano da v1.33l.
+//
+// v1.33l: subtask fix definitivo + filtri Hours.
+//   1. Subtask scomparsi: il fix Exists() di v1.33k non ha funzionato
+//      (forse Django non ottimizza la subquery come previsto). Strategia
+//      finale: pre-fetch degli issue_ids da IssueAssignee.objects (con
+//      SoftDeleteManager attivo che gia' filtra deleted_at__isnull=True),
+//      poi Issue.filter(id__in=ids). Cosi' ogni issue compare 1 volta,
+//      senza JOIN ambiguo.
+//   2. Filtri Hours sull'header People page: 2 dropdown (period + state)
+//      che propagano al backend via query param hours_period e hours_states.
+//      Il backend (team_stats.py) applica i filtri al time_log_filter.
+//      - Period: today / this_week / this_month / last_30_days / all
+//      - State: active / completed / cancelled / all
+//      Default: all/all (back-compat). SWR re-fetch al cambio di filtro.
+//   Service: fetchWorkspaceMembersStats accetta options object con
+//   hoursPeriod + hoursStates.
+//
+// v1.33k hotfix: subtask scomparsi dalla People page dopo v1.33j.
+//   Il filter chained `issue_assignee__assignee_id=user_id` +
+//   `issue_assignee__deleted_at__isnull=True` di v1.33j puo' essere
+//   tradotto da Django come DUE JOIN separati sul through table:
+//     "esiste IssueAssignee con assignee_id=X" AND
+//     "esiste IssueAssignee con deleted_at IS NULL"
+//   anche su righe diverse. Risultato: alcuni subtask (es. "Test son")
+//   filtrati erroneamente.
+//   Fix: usare `Exists(IssueAssignee.objects.filter(issue=OuterRef('pk'),
+//   assignee_id=user_id, deleted_at__isnull=True))`. Subquery EXISTS che
+//   garantisce UNA riga IssueAssignee con TUTTI i criteri sulla SAME row.
+//   Anche team_stats.py: aggiunti `issue__archived_at__isnull=True` e
+//   `issue__deleted_at__isnull=True` al time_log_filter (sanity bound,
+//   evita ore gonfiate da log su issue archiviate).
+//
+// v1.33j hotfix: 3 bug della People page.
+//   1. Duplicate assignees / ore moltiplicate. IssueAssignee e' soft-delete:
+//      quando assegni/disassegni ripetutamente lo stesso utente, lo stock
+//      crea righe nuove e marca le vecchie con deleted_at. Il filter M2M
+//      `assignees__id=user_id` matcha ANCHE le righe soft-deleted ->
+//      JOIN duplicato -> assignee_ids gonfiati ("+2") e Sum delle ore
+//      moltiplicato. Fix backend (team_issues.py):
+//        - filter esplicito su `issue_assignee__deleted_at__isnull=True`
+//        - Prefetch custom degli assignees (User) attraverso IssueAssignee
+//          filtrata, cosi' i.assignees.all() ritorna solo gli attivi.
+//   2. Header tabella aveva 6 colonne ma le righe IssueRow ne avevano 7
+//      (post v1.33i). Aggiunta 7a colonna "Hours" nell'header con la
+//      stessa grid template delle righe.
+//   3. Click su task name non apriva il peek-overview: useIssuePeekOverviewRedirection
+//      settava lo store ma mancava `<IssuePeekOverview/>` come listener
+//      nel render tree della People page. Aggiunto in cima.
+//
+// v1.33i: People page integra ore loggate per task e per utente.
+//   Estende v1.18/v1.19/v1.19b/v1.19c (Team dashboard) con i dati Time
+//   Tracking:
+//   - Backend `team_issues.py`: annotate ogni issue con
+//     time_logged_seconds = somma TimeLog del user su quella issue,
+//     escluso 'rejected'.
+//   - Backend `team_stats.py`: aggiunge total_logged_seconds per user
+//     (totale workspace, esclude rejected). Query separata su TimeLog
+//     raggruppata per user, rispetta lo stesso project access scope dei
+//     count attivi.
+//   - Service: types `TPeopleStatsCounts.total_logged_seconds` e
+//     `TMemberIssue.time_logged_seconds`.
+//   - People UI: 7a colonna "Hours" nella tabella issues (read-only,
+//     l'edit avviene dal Time tracking widget nel sidebar issue) +
+//     stat "Hours" accanto a Active/Overdue nell'header del member.
+//   Modifiche in-place ai file v1.18/v1.19, niente nuove copy step
+//   in build.bat.
+//
+// v1.33h hotfix: rejected logs esclusi dai totali.
+//   I log con approval_status='rejected' venivano sommati nei totali sia
+//   nel widget Time tracking del sidebar issue ("Logged: Xh") sia nella
+//   summary card "Total" del timesheet. Rejected sono lavoro respinto
+//   dall'admin -> non devono contare.
+//   - use-time-logs.ts: totalSeconds filtra fuori i 'rejected'.
+//   - time-log-view.py: total_seconds nell'aggregate ha filter
+//     ~Q(approval_status='rejected'). Aggiunto rejected_seconds come
+//     metrica separata.
+//   - timesheet-root.tsx: 4a summary card "Rejected" (rossa) appare
+//     solo se rejected_seconds > 0 (no clutter quando l'approval
+//     workflow non viene usato). Layout grid passa a 4 colonne.
+//
+// v1.33g hotfix: client-side gating dei consumer Time Tracking.
+//   I 3 toggle in Settings (v1.33f) salvavano in DB ma i consumer
+//   (TimeTrackingSection nel sidebar issue, ActiveTimerBanner persistente)
+//   ignoravano il flag e si mostravano sempre. Fix:
+//   - time-tracking-section.tsx: legge time_tracking_enabled (default true
+//     per back-compat) e ritorna null se OFF. Legge time_tracking_timer_enabled
+//     per nascondere i bottoni Start/Stop/Cancel + i badge live timer.
+//   - active-timer-banner.tsx: ritorna null se time_tracking_enabled OR
+//     time_tracking_timer_enabled e' OFF.
+//   Il pattern usa `getFlag(key, defaultTrue)` cosi' workspace senza il
+//   record workspace_feature_settings continuano a vedere il widget.
+//   Quando l'admin esplicitamente toggle OFF, scompare ovunque.
+//
+// v1.33f: Time Tracking UI - Settings + Report page + sidebar (slice 5b/5).
+//   FINALE del Time Tracking MVP. Aggiunge:
+//   - Settings page workspace `/settings/time-tracking/` con 3 toggle:
+//     * Enable Time Tracking (master)
+//     * Show timer button (mostra/nascondi pulsante timer)
+//     * Require admin approval (active approval workflow)
+//     ADMIN-only edit, MEMBER vede read-only.
+//   - Report page `/timesheet/` workspace-level con:
+//     * Filtri: User (admin only), Project, Period (today/this week/this
+//       month/last 30 days/all time), Status
+//     * Summary cards: Total / Approved / Pending hours
+//     * Tabella log con Approve/Reject buttons (admin only) per pending
+//       e Delete button (owner se in 'auto'/'pending', admin sempre)
+//   - Sidebar entries: voce "Timesheet" sotto "People" con icona Clock.
+//   - Settings sidebar: voce "Time tracking" nella sezione FEATURES.
+//
+//   Service + hook: feature-settings.service.ts, use-feature-settings.ts.
+//   Le 3 settings sono memorizzate via PATCH dello state JSONB
+//   workspace_feature_settings (v1.33e).
+//
 // v1.33e: Time Tracking backend settings + approval (slice 5a/5).
 //   - Tabella generica workspace_feature_settings (migration 0126):
 //     OneToOneField su workspace + features JSONB. Riusabile per
@@ -1196,7 +1329,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.33e";
+const CUSTOM_PATCH_TAG = "PATCHED v1.33m";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

@@ -51,9 +51,10 @@ export type TTimeLogCreatePayload = {
 export type TTimeLogUpdatePayload = Partial<TTimeLogCreatePayload>;
 
 export type TTimeLogReportTotals = {
-  total_seconds: number;
+  total_seconds: number; // PATCH v1.33h: esclude 'rejected'
   approved_seconds: number;
   pending_seconds: number;
+  rejected_seconds: number; // PATCH v1.33h: nuovo
 };
 
 export type TTimeLogReportResponse = {

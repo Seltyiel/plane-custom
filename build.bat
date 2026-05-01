@@ -239,6 +239,71 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\12-time-tracking\workspace-feature-settings-view.py" "%PLANE_SRC%\apps\api\plane\app\views\workspace\workspace_feature_settings.py" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.33f: UI Settings + Report page Time Tracking + sidebar entries.
+REM
+REM Service + hook frontend per feature settings.
+copy /Y "%PATCHES_DIR%\12-time-tracking\feature-settings-service.ts" "%PLANE_SRC%\apps\web\core\services\feature-settings.service.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\12-time-tracking\use-feature-settings.ts" "%PLANE_SRC%\apps\web\core\hooks\use-feature-settings.ts" >nul
+if errorlevel 1 goto :patcherr
+
+REM Settings page form components.
+if not exist "%PLANE_SRC%\apps\web\core\components\workspace-time-tracking" (
+    mkdir "%PLANE_SRC%\apps\web\core\components\workspace-time-tracking"
+)
+copy /Y "%PATCHES_DIR%\12-time-tracking\time-tracking-settings-form.tsx" "%PLANE_SRC%\apps\web\core\components\workspace-time-tracking\settings-form.tsx" >nul
+if errorlevel 1 goto :patcherr
+> "%PLANE_SRC%\apps\web\core\components\workspace-time-tracking\index.ts" echo export * from "./settings-form";
+
+REM Settings page route file.
+mkdir "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(settings)\settings\(workspace)\time-tracking" 2>nul
+copy /Y "%PATCHES_DIR%\12-time-tracking\time-tracking-settings-page.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(settings)\settings\(workspace)\time-tracking\page.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\12-time-tracking\time-tracking-settings-header.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(settings)\settings\(workspace)\time-tracking\header.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM Settings sidebar registration (full-replacement, estende v1.20d).
+copy /Y "%PATCHES_DIR%\12-time-tracking\types-settings.ts" "%PLANE_SRC%\packages\types\src\settings.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\12-time-tracking\constants-settings-workspace.ts" "%PLANE_SRC%\packages\constants\src\settings\workspace.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\12-time-tracking\sidebar-item-icon.tsx" "%PLANE_SRC%\apps\web\core\components\settings\workspace\sidebar\item-icon.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM Timesheet report page (workspace-level).
+if not exist "%PLANE_SRC%\apps\web\core\components\timesheet" (
+    mkdir "%PLANE_SRC%\apps\web\core\components\timesheet"
+)
+copy /Y "%PATCHES_DIR%\12-time-tracking\timesheet-root.tsx" "%PLANE_SRC%\apps\web\core\components\timesheet\root.tsx" >nul
+if errorlevel 1 goto :patcherr
+> "%PLANE_SRC%\apps\web\core\components\timesheet\index.ts" echo export * from "./root";
+
+mkdir "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\timesheet" 2>nul
+copy /Y "%PATCHES_DIR%\12-time-tracking\timesheet-page.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\timesheet\page.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\12-time-tracking\timesheet-layout.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\timesheet\layout.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\12-time-tracking\timesheet-header.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\timesheet\header.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM Routes registry (full-replacement, estende v1.19): aggiunge /timesheet/ e /settings/time-tracking/.
+copy /Y "%PATCHES_DIR%\12-time-tracking\routes-core.ts" "%PLANE_SRC%\apps\web\app\routes\core.ts" >nul
+if errorlevel 1 goto :patcherr
+
+REM Sidebar registry (full-replacement estende v1.19): aggiunge timesheet al menu.
+copy /Y "%PATCHES_DIR%\12-time-tracking\constants-workspace.ts" "%PLANE_SRC%\packages\constants\src\workspace.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\12-time-tracking\sidebar-helper.tsx" "%PLANE_SRC%\apps\web\ce\components\workspace\sidebar\helper.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\12-time-tracking\sidebar-item-base.tsx" "%PLANE_SRC%\apps\web\core\components\workspace\sidebar\sidebar-item.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.33i: People page integra ore loggate per task e per utente.
+REM Estende in place i file v1.18/v1.19/v1.19b/v1.19c (modificati direttamente
+REM nelle loro cartelle 03-backend e 04-people-page). Le copy step esistenti
+REM piu' avanti nel build.bat installano automaticamente la versione estesa.
+REM Niente nuove copy step qui.
+
 REM PATCH v1.23d: Gantt drag click leak. Aggiunto tracking distanza mouse
 REM tra mousedown e click. Se > 5px, click ignorato (era drag).
 copy /Y "%PATCHES_DIR%\01-layouts\workspace-roots\gantt-blocks.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\gantt\blocks.tsx" >nul
@@ -573,12 +638,14 @@ REM   - workspace-state-root.tsx (file nuovo): orchestrator analogo di ProjectSt
 REM   - workspace-states-page.tsx + header.tsx (file nuovi): la pagina settings.
 REM   - state-dropdown.tsx: merge automatico project + workspace shared state ids.
 REM   - routes-core.ts: registrata la nuova rotta /<slug>/settings/states/.
-copy /Y "%PATCHES_DIR%\05-states\types-settings.ts" "%PLANE_SRC%\packages\types\src\settings.ts" >nul
-if errorlevel 1 goto :patcherr
-copy /Y "%PATCHES_DIR%\05-states\constants-settings-workspace.ts" "%PLANE_SRC%\packages\constants\src\settings\workspace.ts" >nul
-if errorlevel 1 goto :patcherr
-copy /Y "%PATCHES_DIR%\05-states\sidebar-item-icon.tsx" "%PLANE_SRC%\apps\web\core\components\settings\workspace\sidebar\item-icon.tsx" >nul
-if errorlevel 1 goto :patcherr
+REM PATCH v1.33f superseded: le 3 copy step di v1.20d (types-settings,
+REM constants-settings-workspace, sidebar-item-icon) sono ora superate
+REM dalle versioni v1.33f che estendono v1.20d + aggiungono "time-tracking"
+REM nella sezione FEATURES dei settings sidebar. Lasciate in commento.
+REM
+REM copy /Y "%PATCHES_DIR%\05-states\types-settings.ts" "%PLANE_SRC%\packages\types\src\settings.ts" >nul
+REM copy /Y "%PATCHES_DIR%\05-states\constants-settings-workspace.ts" "%PLANE_SRC%\packages\constants\src\settings\workspace.ts" >nul
+REM copy /Y "%PATCHES_DIR%\05-states\sidebar-item-icon.tsx" "%PLANE_SRC%\apps\web\core\components\settings\workspace\sidebar\item-icon.tsx" >nul
 REM Crea la directory components/workspace-states (file nuovi additivi)
 if not exist "%PLANE_SRC%\apps\web\core\components\workspace-states" (
     mkdir "%PLANE_SRC%\apps\web\core\components\workspace-states"
@@ -611,20 +678,17 @@ copy /Y "%PATCHES_DIR%\04-people-page\people-layout.tsx" "%PLANE_SRC%\apps\web\a
 if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\04-people-page\people-header.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\people\header.tsx" >nul
 if errorlevel 1 goto :patcherr
-REM Registrazione route in routes/core.ts (full replacement):
-copy /Y "%PATCHES_DIR%\04-people-page\routes-core.ts" "%PLANE_SRC%\apps\web\app\routes\core.ts" >nul
-if errorlevel 1 goto :patcherr
-REM Voce sidebar in packages/constants/src/workspace.ts (full replacement):
-copy /Y "%PATCHES_DIR%\04-people-page\constants-workspace.ts" "%PLANE_SRC%\packages\constants\src\workspace.ts" >nul
-if errorlevel 1 goto :patcherr
-REM Icona Users nello switch del sidebar helper (full replacement):
-copy /Y "%PATCHES_DIR%\04-people-page\sidebar-helper.tsx" "%PLANE_SRC%\apps\web\ce\components\workspace\sidebar\helper.tsx" >nul
-if errorlevel 1 goto :patcherr
-REM "people" aggiunto a staticItems in SidebarItemBase (altrimenti il gate
-REM isPinned+staticItems filtra via la voce, che resterebbe invisibile
-REM finche' nessun utente non la pinna manualmente):
-copy /Y "%PATCHES_DIR%\04-people-page\sidebar-item-base.tsx" "%PLANE_SRC%\apps\web\core\components\workspace\sidebar\sidebar-item.tsx" >nul
-if errorlevel 1 goto :patcherr
+REM PATCH v1.33f superseded: le 4 copy step di v1.19 (routes-core,
+REM constants-workspace, sidebar-helper, sidebar-item-base) sono ora
+REM superate dalle versioni v1.33f che estendono v1.19 + aggiungono
+REM Timesheet. Lasciate qui in commento per audit - non eseguire piu'
+REM altrimenti sovrascrivono le v1.33f piu' su (riga ~290-298) e fanno
+REM sparire la voce Timesheet dalla sidebar.
+REM
+REM copy /Y "%PATCHES_DIR%\04-people-page\routes-core.ts" "%PLANE_SRC%\apps\web\app\routes\core.ts" >nul
+REM copy /Y "%PATCHES_DIR%\04-people-page\constants-workspace.ts" "%PLANE_SRC%\packages\constants\src\workspace.ts" >nul
+REM copy /Y "%PATCHES_DIR%\04-people-page\sidebar-helper.tsx" "%PLANE_SRC%\apps\web\ce\components\workspace\sidebar\helper.tsx" >nul
+REM copy /Y "%PATCHES_DIR%\04-people-page\sidebar-item-base.tsx" "%PLANE_SRC%\apps\web\core\components\workspace\sidebar\sidebar-item.tsx" >nul
 
 echo     OK - Type unions estesi.
 

@@ -70,7 +70,7 @@
 from datetime import timedelta
 
 # Django imports
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
 # Third party modules
@@ -81,6 +81,8 @@ from rest_framework.response import Response
 from plane.app.permissions import WorkspaceViewerPermission
 from plane.app.views.base import BaseAPIView
 from plane.db.models import IssueAssignee, WorkspaceMember
+# PATCH v1.33i: Time Tracking total per user
+from plane.db.models.time_log import TimeLog
 
 
 ACTIVE_STATE_GROUPS = ("backlog", "unstarted", "started")
@@ -97,6 +99,9 @@ def _empty_stats():
         "overdue": 0,
         "due_this_week": 0,
         "no_target_date": 0,
+        # PATCH v1.33i: total ore loggate da QUESTO user nel workspace
+        # (esclude rejected). Default 0 se nessun log.
+        "total_logged_seconds": 0,
     }
 
 
@@ -202,6 +207,73 @@ class WorkspaceMembersStatsEndpoint(BaseAPIView):
                 stats["overdue"] = row["overdue"]
                 stats["due_this_week"] = row["due_this_week"]
                 stats["no_target_date"] = row["no_target_date"]
+
+        # PATCH v1.33i: ore loggate per user nel workspace.
+        # Filter:
+        #  - workspace slug
+        #  - user in member_ids (limita ai member visibili)
+        #  - approval_status != 'rejected' (lavoro respinto non conta)
+        #  - issue su un progetto a cui il requester accede
+        #  - issue/log non soft-deleted (gia' filtrato da default manager)
+        # PATCH v1.33l: filtri opzionali su Hours stat.
+        # Query params:
+        #   ?hours_period=today|this_week|this_month|last_30_days|all  (default: all)
+        #   ?hours_states=active|completed|cancelled|all (default: all)
+        # Calcoliamo from/to date in base al period.
+        from datetime import datetime, time as dt_time
+        period = (request.query_params.get("hours_period") or "all").lower()
+        states_filter = (request.query_params.get("hours_states") or "all").lower()
+
+        period_from = None
+        if period == "today":
+            period_from = datetime.combine(today, dt_time.min)
+        elif period == "this_week":
+            # Monday della settimana corrente
+            monday = today - timedelta(days=today.weekday())
+            period_from = datetime.combine(monday, dt_time.min)
+        elif period == "this_month":
+            first = today.replace(day=1)
+            period_from = datetime.combine(first, dt_time.min)
+        elif period == "last_30_days":
+            past = today - timedelta(days=30)
+            period_from = datetime.combine(past, dt_time.min)
+        # period == "all" -> period_from None, no filter
+
+        time_log_filter = Q(
+            workspace__slug=slug,
+            user_id__in=member_ids,
+            issue__project__project_projectmember__member=request.user,
+            issue__project__project_projectmember__is_active=True,
+            issue__project__archived_at__isnull=True,
+            issue__archived_at__isnull=True,
+            issue__deleted_at__isnull=True,
+        ) & ~Q(approval_status="rejected")
+
+        if project_ids:
+            time_log_filter &= Q(project_id__in=project_ids)
+
+        # PATCH v1.33l: filtro period (logged_at >= period_from)
+        if period_from is not None:
+            time_log_filter &= Q(logged_at__gte=period_from)
+
+        # PATCH v1.33l: filtro state group (active|completed|cancelled).
+        if states_filter == "active":
+            time_log_filter &= Q(issue__state__group__in=ACTIVE_STATE_GROUPS)
+        elif states_filter == "completed":
+            time_log_filter &= Q(issue__state__group="completed")
+        elif states_filter == "cancelled":
+            time_log_filter &= Q(issue__state__group="cancelled")
+        # states_filter == "all" -> no filter
+
+        time_rows = (
+            TimeLog.objects.filter(time_log_filter)
+            .values("user_id")
+            .annotate(total=Sum("duration_seconds"))
+        )
+        for row in time_rows:
+            stats = by_member.get(row["user_id"])
+            if stats is not None:
+                stats["total_logged_seconds"] = row["total"] or 0
 
         # 6) Build response.
         result = []

@@ -3,27 +3,14 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  * See the LICENSE file for details.
  *
- * PATCH (plane-custom) v1.19:
- *  Servizio client per l'endpoint /api/workspaces/<slug>/members/stats/
- *  (definito backend in v1.18, team_stats.py).
- *
- *  Restituisce per ogni membro attivo del workspace:
- *    - dati identificativi (id, nome, email, avatar_url, role)
- *    - stats aggregate: backlog, unstarted, started, completed, cancelled,
- *      total_active, overdue, due_this_week, no_target_date
- *
- *  Solo i task dei progetti a cui l'utente corrente appartiene sono contati
- *  (filtro backend-side).
- *
- * PATCH (plane-custom) v1.19b:
- *  Aggiunto fetchMemberIssues(slug, userId) che chiama l'endpoint
- *  /api/workspaces/<slug>/members/<user_id>/issues/ (team_issues.py) e
- *  ritorna la lista flat dei task attivi del membro. Il frontend costruisce
- *  lato client l'albero task/subtask usando parent_id.
+ * PATCH (plane-custom) v1.19 + v1.19b + v1.33i:
+ *  v1.19/v1.19b: People page stats + per-member issues.
+ *  v1.33i: aggiunti `total_logged_seconds` (per user) e
+ *  `time_logged_seconds` (per task per user) cosi' la People page
+ *  puo' mostrare le ore loggate.
  */
 
 import { API_BASE_URL } from "@plane/constants";
-// services
 import { APIService } from "@/services/api.service";
 
 export type TPeopleStatsMember = {
@@ -46,6 +33,9 @@ export type TPeopleStatsCounts = {
   overdue: number;
   due_this_week: number;
   no_target_date: number;
+  // PATCH v1.33i: ore totali loggate da questo user nel workspace
+  // (esclude rejected). Default 0.
+  total_logged_seconds: number;
 };
 
 export type TPeopleStatsEntry = {
@@ -53,8 +43,6 @@ export type TPeopleStatsEntry = {
   stats: TPeopleStatsCounts;
 };
 
-// plane-custom v1.19b: shape di un singolo task attivo ritornato
-// dall'endpoint /members/<user_id>/issues/.
 export type TMemberIssue = {
   id: string;
   name: string;
@@ -72,6 +60,8 @@ export type TMemberIssue = {
   parent_id: string | null;
   assignee_ids: string[];
   created_at: string | null;
+  // PATCH v1.33i: ore loggate da questo user su questa issue (esclude rejected).
+  time_logged_seconds: number;
 };
 
 export class PeopleStatsService extends APIService {
@@ -81,11 +71,31 @@ export class PeopleStatsService extends APIService {
 
   async fetchWorkspaceMembersStats(
     workspaceSlug: string,
-    projectIds?: string[]
+    optionsOrProjectIds?:
+      | string[]
+      | {
+          projectIds?: string[];
+          hoursPeriod?: "today" | "this_week" | "this_month" | "last_30_days" | "all";
+          hoursStates?: "active" | "completed" | "cancelled" | "all";
+        }
   ): Promise<TPeopleStatsEntry[]> {
+    // Back-compat: il parametro era `projectIds: string[]`. Adesso accetta
+    // anche un options object con projectIds + hoursPeriod + hoursStates.
+    const opts =
+      Array.isArray(optionsOrProjectIds)
+        ? { projectIds: optionsOrProjectIds }
+        : optionsOrProjectIds ?? {};
+
     const params: Record<string, string> = {};
-    if (projectIds && projectIds.length > 0) {
-      params.project = projectIds.join(",");
+    if (opts.projectIds && opts.projectIds.length > 0) {
+      params.project = opts.projectIds.join(",");
+    }
+    // PATCH v1.33l: passa i filtri Hours al backend (default: all/all).
+    if (opts.hoursPeriod && opts.hoursPeriod !== "all") {
+      params.hours_period = opts.hoursPeriod;
+    }
+    if (opts.hoursStates && opts.hoursStates !== "all") {
+      params.hours_states = opts.hoursStates;
     }
     return this.get(`/api/workspaces/${workspaceSlug}/members/stats/`, { params })
       .then((response) => response?.data ?? [])
@@ -94,8 +104,6 @@ export class PeopleStatsService extends APIService {
       });
   }
 
-  // plane-custom v1.19b: lazy-load dei task attivi di un singolo membro per
-  // la tree view della People page.
   async fetchMemberIssues(
     workspaceSlug: string,
     userId: string,

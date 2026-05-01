@@ -53,8 +53,14 @@ export function useTimeLogs(workspaceSlug: string | undefined, projectId: string
     mutate((current) => current?.filter((l) => l.id !== logId), { revalidate: false });
   };
 
-  // Total durata loggata su questa issue (in secondi)
-  const totalSeconds = (data ?? []).reduce((acc, log) => acc + log.duration_seconds, 0);
+  // Total durata loggata su questa issue (in secondi).
+  // PATCH v1.33h: i log con approval_status='rejected' NON vengono
+  // contati nel totale "Logged" (sono lavoro che l'admin ha rifiutato).
+  // I 'pending' invece SI contano (sono ancora work-in-progress di
+  // approval, ma se l'utente li ha loggati e' tempo speso reale).
+  const totalSeconds = (data ?? [])
+    .filter((log) => log.approval_status !== "rejected")
+    .reduce((acc, log) => acc + log.duration_seconds, 0);
 
   return {
     logs: data ?? [],

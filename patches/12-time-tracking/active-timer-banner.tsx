@@ -29,6 +29,7 @@ import { Square, X, Play } from "lucide-react";
 import { TOAST_TYPE, setToast } from "@plane/propel/toast";
 import { Tooltip } from "@plane/propel/tooltip";
 import { useActiveTimer } from "@/hooks/use-active-timer";
+import { useFeatureSettings } from "@/hooks/use-feature-settings";
 import { formatDurationHM, formatDurationHMS } from "@/lib/format-duration";
 
 type Props = {
@@ -40,6 +41,14 @@ export const ActiveTimerBanner = observer(function ActiveTimerBanner(props: Prop
 
   const { timer, stop, cancel } = useActiveTimer(workspaceSlug);
 
+  // PATCH v1.33g: gating tramite workspace feature settings.
+  // Il banner si nasconde se la master feature e' OFF oppure se solo
+  // il timer feature e' OFF (nei quali casi non dovrebbero esserci
+  // timer attivi, ma per sicurezza nascondiamo comunque).
+  const { getFlag } = useFeatureSettings(workspaceSlug);
+  const featureEnabled = getFlag<boolean>("time_tracking_enabled", true);
+  const timerFeatureEnabled = getFlag<boolean>("time_tracking_timer_enabled", true);
+
   // Tick locale per il display HH:MM:SS, indipendente dal polling SWR.
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -49,6 +58,7 @@ export const ActiveTimerBanner = observer(function ActiveTimerBanner(props: Prop
   }, [timer]);
 
   if (!timer) return null;
+  if (!featureEnabled || !timerFeatureEnabled) return null;
 
   const startedAtMs = new Date(timer.started_at).getTime();
   const elapsedSec = Math.max(0, Math.floor((Date.now() - startedAtMs) / 1000));

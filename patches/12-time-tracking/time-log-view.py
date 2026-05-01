@@ -238,8 +238,14 @@ class WorkspaceTimeLogEndpoint(BaseAPIView):
 
         # Aggregati: il frontend deve mostrare summary cards "Total: 42h"
         # senza dover paginare tutto.
+        # PATCH v1.33h: total_seconds esclude i 'rejected' (lavoro non
+        # contato, l'admin l'ha respinto). Aggiunto rejected_seconds
+        # come metrica separata cosi' frontend puo' mostrarlo se vuole.
         totals = qs.aggregate(
-            total_seconds=Sum("duration_seconds"),
+            total_seconds=Sum(
+                "duration_seconds",
+                filter=~Q(approval_status="rejected"),
+            ),
             approved_seconds=Sum(
                 "duration_seconds",
                 filter=Q(approval_status__in=["approved", "auto"]),
@@ -247,6 +253,10 @@ class WorkspaceTimeLogEndpoint(BaseAPIView):
             pending_seconds=Sum(
                 "duration_seconds",
                 filter=Q(approval_status="pending"),
+            ),
+            rejected_seconds=Sum(
+                "duration_seconds",
+                filter=Q(approval_status="rejected"),
             ),
         )
         # Default 0 se nessun log

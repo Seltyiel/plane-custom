@@ -32,6 +32,7 @@ import { TOAST_TYPE, setToast } from "@plane/propel/toast";
 
 import { useTimeLogs } from "@/hooks/use-time-logs";
 import { useActiveTimer } from "@/hooks/use-active-timer";
+import { useFeatureSettings } from "@/hooks/use-feature-settings";
 import { formatDurationHM, formatDurationHMS } from "@/lib/format-duration";
 import { ManualLogModal } from "@/components/issues/time-tracking/manual-log-modal";
 import { RecentLogsList } from "@/components/issues/time-tracking/recent-logs-list";
@@ -50,11 +51,22 @@ export const IssueWorklogProperty = observer(function IssueWorklogProperty(props
 
   const [manualModalOpen, setManualModalOpen] = useState(false);
 
+  // PATCH v1.33g: gating tramite workspace feature settings.
+  // Default `time_tracking_enabled` = true (back-compat con utenti che hanno
+  // gia' usato la feature prima dell'introduzione del setting).
+  // Default `time_tracking_timer_enabled` = true.
+  const { getFlag } = useFeatureSettings(workspaceSlug);
+  const featureEnabled = getFlag<boolean>("time_tracking_enabled", true);
+  const timerFeatureEnabled = getFlag<boolean>("time_tracking_timer_enabled", true);
+
   const { totalSeconds, refresh: refreshLogs } = useTimeLogs(workspaceSlug, projectId, issueId);
   const { timer, isOnIssue, start, stop, cancel } = useActiveTimer(workspaceSlug);
 
   const timerOnThis = isOnIssue(issueId);
   const timerOnOther = timer !== null && !timerOnThis;
+
+  // PATCH v1.33g: se il master flag e' OFF, niente Time tracking section.
+  if (!featureEnabled) return null;
 
   const handleStart = async () => {
     try {
@@ -148,13 +160,14 @@ export const IssueWorklogProperty = observer(function IssueWorklogProperty(props
           <span className="text-12 font-medium text-primary">
             Logged: {formatDurationHM(totalSeconds)}
           </span>
-          {timerOnThis && (
+          {/* PATCH v1.33g: badge timer mostrati solo se la feature timer e' ON */}
+          {timerFeatureEnabled && timerOnThis && (
             <span className="flex items-center gap-1 rounded-full bg-success-subtle px-2 py-0.5 text-11 font-medium text-success-strong">
               <span className="size-1.5 animate-pulse rounded-full bg-success-strong" />
               {formatDurationHMS(liveElapsed)}
             </span>
           )}
-          {timerOnOther && (
+          {timerFeatureEnabled && timerOnOther && (
             <Tooltip
               tooltipContent={`Timer running on ${timer?.issue_name ?? "another task"}. Stop it first.`}
             >
@@ -165,7 +178,9 @@ export const IssueWorklogProperty = observer(function IssueWorklogProperty(props
           )}
         </div>
 
-        {/* Riga 2: bottoni azioni */}
+        {/* Riga 2: bottoni azioni.
+            PATCH v1.33g: se il timer feature e' OFF mostriamo solo "Log time"
+            manuale, niente Start/Stop/Cancel. */}
         {!disabled && (
           <div className="flex flex-wrap gap-1.5">
             <Button
@@ -177,29 +192,31 @@ export const IssueWorklogProperty = observer(function IssueWorklogProperty(props
               Log time
             </Button>
 
-            {timerOnThis ? (
-              <>
+            {timerFeatureEnabled && (
+              timerOnThis ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={handleStop}
+                    prependIcon={<Square className="size-3.5" />}
+                  >
+                    Stop
+                  </Button>
+                  <Button size="sm" variant="link-neutral" onClick={handleCancel}>
+                    Cancel
+                  </Button>
+                </>
+              ) : (
                 <Button
                   size="sm"
-                  variant="primary"
-                  onClick={handleStop}
-                  prependIcon={<Square className="size-3.5" />}
+                  variant="accent-primary"
+                  onClick={handleStart}
+                  prependIcon={<Play className="size-3.5" />}
                 >
-                  Stop
+                  Start timer
                 </Button>
-                <Button size="sm" variant="link-neutral" onClick={handleCancel}>
-                  Cancel
-                </Button>
-              </>
-            ) : (
-              <Button
-                size="sm"
-                variant="accent-primary"
-                onClick={handleStart}
-                prependIcon={<Play className="size-3.5" />}
-              >
-                Start timer
-              </Button>
+              )
             )}
           </div>
         )}

@@ -60,7 +60,8 @@
 # membro ma il parent no, la trattiamo come "orphan root" nel tree.
 
 # Django imports
-from django.db.models import Q
+from django.db.models import Q, Sum, IntegerField, Prefetch, Subquery, OuterRef
+from django.db.models.functions import Coalesce
 
 # Third party modules
 from rest_framework import status
@@ -69,7 +70,8 @@ from rest_framework.response import Response
 # Module imports
 from plane.app.permissions import WorkspaceViewerPermission
 from plane.app.views.base import BaseAPIView
-from plane.db.models import Issue
+from plane.db.models import Issue, IssueAssignee, User
+from plane.db.models.time_log import TimeLog
 
 
 ACTIVE_STATE_GROUPS = ("backlog", "unstarted", "started")
@@ -88,17 +90,64 @@ class WorkspaceMemberIssuesEndpoint(BaseAPIView):
         # Access control + scope: workspace slug, member of project, project
         # non archiviato, issue non archiviata (issue_objects gia' filtra
         # draft + archived).
+        #
+        # PATCH v1.33m: REVERT al filter originale v1.19c che funzionava.
+        # Le mie precedenti iterazioni (v1.33j/k/l) cercavano di filtrare
+        # via i record IssueAssignee soft-deleted, ma facevano scomparire
+        # task che invece dovrebbero apparire (es. subtask "Test son").
+        # Il problema vero NON era il filter, erano i SIDE-EFFECT: i JOIN
+        # duplicati (annotate Sum moltiplicato + lista assignee gonfiata).
+        #
+        # Strategia v1.33m:
+        #  - Filter ORIGINALE `assignees__id=user_id` (matcha qualsiasi
+        #    storia IssueAssignee, anche soft-deleted: ma il distinct()
+        #    deduplica le issue).
+        #  - Subquery (NON annotate JOIN) per time_logged_seconds: cosi'
+        #    la Sum non si moltiplica per N IssueAssignee history.
+        #  - Custom Prefetch sugli assignees con filter through-model
+        #    deleted_at__isnull=True: cosi' `i.assignees.all()` ritorna
+        #    solo gli assignee CORRENTEMENTE attivi (no "+2" fantasma).
+
+        # Subquery: somma TimeLog per (issue, user_id), escluso rejected.
+        # Calcolata UNA volta per riga senza dipendere dalla M2M JOIN.
+        time_logged_subquery = (
+            TimeLog.objects.filter(
+                issue=OuterRef("pk"),
+                user_id=user_id,
+                deleted_at__isnull=True,
+            )
+            .exclude(approval_status="rejected")
+            .values("issue")
+            .annotate(total=Sum("duration_seconds"))
+            .values("total")
+        )
+
+        # Prefetch assignees attivi (NO soft-deleted) per la response.
+        active_assignees_prefetch = Prefetch(
+            "assignees",
+            queryset=User.objects.filter(
+                issue_assignee__deleted_at__isnull=True,
+            ).distinct(),
+        )
+
         qs = (
             Issue.issue_objects.filter(
                 workspace__slug=slug,
-                assignees__id=user_id,
+                assignees__id=user_id,  # filter originale v1.19c
                 state__group__in=ACTIVE_STATE_GROUPS,
                 project__project_projectmember__member=request.user,
                 project__project_projectmember__is_active=True,
                 project__archived_at__isnull=True,
             )
             .select_related("state", "project")
-            .prefetch_related("assignees")
+            .prefetch_related(active_assignees_prefetch)
+            .annotate(
+                time_logged_seconds=Coalesce(
+                    Subquery(time_logged_subquery, output_field=IntegerField()),
+                    0,
+                    output_field=IntegerField(),
+                )
+            )
             .distinct()
             .order_by("project__identifier", "sequence_id")
         )
@@ -132,6 +181,9 @@ class WorkspaceMemberIssuesEndpoint(BaseAPIView):
                     "parent_id": str(i.parent_id) if i.parent_id else None,
                     "assignee_ids": [str(a.id) for a in i.assignees.all()],
                     "created_at": i.created_at.isoformat() if i.created_at else None,
+                    # PATCH v1.33i: ore loggate da QUESTO user su questa issue
+                    # (esclude rejected). 0 se l'utente non ha mai loggato.
+                    "time_logged_seconds": getattr(i, "time_logged_seconds", 0) or 0,
                 }
             )
 

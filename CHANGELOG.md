@@ -6,6 +6,171 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.33m] - 2026-05-02 (revert filter originale People/team_issues + Subquery)
+
+### Fixato
+- **Subtask scomparsi (revert)**: le iterazioni v1.33j/k/l filtravano via i record `IssueAssignee` soft-deleted dal filter principale dell'endpoint `team_issues.py`. Side-effect: alcuni task (es. subtask "Test son") scomparivano dalla People page. L'utente ha confermato che il comportamento v1.19c originale era corretto.
+- Revert al filter `assignees__id=user_id` (M2M traversal completa, include history). I side-effect del filter originale (assignee chip "+2" fantasma e Sum ore moltiplicato) sono fixati ALTROVE:
+  - **Subquery per `time_logged_seconds`**: invece di annotate inline che fa JOIN su `issue_time_logs`, uso `Subquery(TimeLog.objects.filter(issue=OuterRef('pk'), user_id=...).exclude(approval_status='rejected').values('issue').annotate(total=Sum('duration_seconds')).values('total'))`. La Subquery e' calcolata 1 volta per issue, non si moltiplica.
+  - **Custom Prefetch sugli assignees**: `Prefetch("assignees", queryset=User.objects.filter(issue_assignee__deleted_at__isnull=True).distinct())`. La lista `i.assignees.all()` ritorna solo gli assignee correnti, niente "+2" fantasma.
+- `.distinct()` mantenuto per dedupliare le issue dalla M2M JOIN.
+
+### Nota architetturale
+La query del filter principale (`assignees__id=user_id`) attraversa il through table senza filtro su `deleted_at` (Django M2M default). Quindi un task che ha avuto Luca come assegnatario in passato (anche soft-deleted) compare. E' coerente con v1.19c (comportamento atteso). Le visualizzazioni di "current state" (chip assignee + ore) usano i filter corretti tramite Prefetch/Subquery.
+
+### File toccati
+- Modificato: `patches/03-backend/api-team-issues-view.py`
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG → v1.33m)
+
+---
+
+## [v1.33l] - 2026-05-02 (subtask fix definitivo + filtri Hours)
+
+### Fixato
+- **Subtask scomparsi (definitivo)**: il fix `Exists()` di v1.33k non ha avuto effetto pratico (Test son ancora invisibile). Cambio strategia: pre-fetch degli `issue_ids` da `IssueAssignee.objects` (con SoftDeleteManager che gia' filtra `deleted_at__isnull=True`), poi `Issue.objects.filter(id__in=issue_ids)`. Niente JOIN ambiguo sul through table, ogni issue compare 1 volta.
+
+### Aggiunto
+- **Filtri Hours nell'header della People page**: 2 dropdown propagati al backend.
+  - **Period**: `Today | This week | This month | Last 30 days | All time` (default: All time)
+  - **State**: `Active only | Completed | Cancelled | All states` (default: All states)
+  - SWR rifetch al cambio del filter; lo stat "Hours" di ogni member si aggiorna di conseguenza.
+  - Backend `team_stats.py` accetta i nuovi query params `hours_period` e `hours_states` e applica i filtri al `time_log_filter`.
+  - Service `fetchWorkspaceMembersStats(slug, optionsOrProjectIds)` ora accetta options object `{ projectIds, hoursPeriod, hoursStates }` (con back-compat per la firma vecchia che passava solo `string[]`).
+
+### File toccati
+- Modificati: `patches/03-backend/api-team-issues-view.py`, `patches/03-backend/api-team-stats-view.py`, `patches/04-people-page/people-stats-service.ts`, `patches/04-people-page/people-page.tsx`
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG → v1.33l)
+
+---
+
+## [v1.33k] - 2026-05-01 (hotfix: subtask scomparsi post v1.33j)
+
+### Fixato
+- **Subtask scomparsi dalla People page**: il fix v1.33j sul through table M2M `issue_assignee__assignee_id=user_id` + `issue_assignee__deleted_at__isnull=True` poteva essere tradotto da Django come **due JOIN separati** sullo stesso through table. Risultato: il match diventava "esiste una riga IssueAssignee con assignee_id=X" AND "esiste una riga IssueAssignee con deleted_at IS NULL" (anche su righe diverse), invece di "una sola riga IssueAssignee soddisfa entrambi". Conseguenza: alcuni subtask (es. "Test son") venivano filtrati erroneamente.
+- Fix `team_issues.py`: usato `Exists(IssueAssignee.objects.filter(issue=OuterRef('pk'), assignee_id=user_id, deleted_at__isnull=True))`. Subquery EXISTS che garantisce **UNA SINGOLA riga** IssueAssignee con TUTTI i criteri sulla SAME row.
+- Fix `team_stats.py`: aggiunti `issue__archived_at__isnull=True` e `issue__deleted_at__isnull=True` al `time_log_filter` (sanity bound, evita ore "fantasma" sommate da log su issue archiviate o soft-deleted).
+
+### Note
+Il counter "Hours" nell'header del member continua a includere log su task in **qualsiasi state group** (active, completed, cancelled), non solo gli active. E' una scelta deliberata: rappresenta il contributo storico totale del membro. Se la coerenza con "Active 5" e' preferibile, va segnalato per fare la stessa restrizione anche alle ore.
+
+### File toccati
+- Modificati: `patches/03-backend/api-team-issues-view.py`, `patches/03-backend/api-team-stats-view.py`
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG → v1.33k)
+
+---
+
+## [v1.33j] - 2026-05-01 (hotfix: 3 bug della People page)
+
+### Fixato
+1. **Duplicate assignees + ore moltiplicate**: lo stock `IssueAssignee` e' soft-delete; assegnare/disassegnare ripetutamente lo stesso utente lasciava righe con `deleted_at` impostato. Il filter M2M `assignees__id=user_id` matchava anche le righe soft-deleted → JOIN duplicato → "+N" fantasma sugli avatar e `time_logged_seconds` moltiplicato per il numero di cancellazioni storiche.
+   - Fix backend (`team_issues.py`): filter esplicito `issue_assignee__deleted_at__isnull=True` + custom `Prefetch("assignees")` filtrato con `User.objects.filter(issue_assignee__deleted_at__isnull=True)` → `i.assignees.all()` ritorna solo gli assignee attivi.
+2. **Header tabella disallineato**: dopo v1.33i le righe `IssueRow` avevano 7 colonne (aggiunta "Hours") ma l'header restava a 6 → labels sballate e celle delle ore stampate sotto la colonna sbagliata. Fix: aggiunta `<span>Hours</span>` con `grid-cols-...` aggiornato per matchare la riga.
+3. **Click su task name non apriva il peek-overview**: `useIssuePeekOverviewRedirection().handleRedirection()` setta lo store del peek, ma serviva `<IssuePeekOverview/>` come listener nel render tree per mostrare il modal. Mancava nella People page (e' presente solo in `AllIssueLayoutRoot` e qualche altro punto stock). Aggiunto `<IssuePeekOverview/>` in cima al `WorkspacePeoplePage`.
+
+### File toccati
+- Modificati: `patches/03-backend/api-team-issues-view.py`, `patches/04-people-page/people-page.tsx`
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG → v1.33j)
+- `build.bat`: nessuna nuova copy step (modifiche in-place)
+
+---
+
+## [v1.33i] - 2026-05-01 (People page integra ore loggate)
+
+### Aggiunto
+- **Colonna "Hours"** nella tabella issues di ogni utente nella People page (icona Clock + durata `Xh Ym`). Read-only: l'edit avviene dal Time tracking widget nel sidebar issue.
+- **Stat "Hours"** nell'header di ogni member, accanto a Active/Overdue. Mostra il totale ore loggate dal user nel workspace, escluso `rejected`.
+- Backend `team_issues.py`: annotate `time_logged_seconds` per (user, issue), escluso `rejected`. Coalesce a 0 se nessun log.
+- Backend `team_stats.py`: query separata su `TimeLog` con filtri progetti accessibili al requester, raggruppata per `user_id`, escluso `rejected`. Popola `total_logged_seconds` in ogni stats entry.
+
+### Logica
+- Le ore mostrate **escludono i log `rejected`** (coerente con v1.33h sui totali del widget e del timesheet).
+- I log `pending` SI contano (work-in-progress di approval, l'utente li ha gia' loggati).
+- Project access scope rispettato: l'utente vede solo ore di task in progetti dove e' member attivo.
+
+### File toccati
+- Modificati: `patches/03-backend/api-team-issues-view.py`, `patches/03-backend/api-team-stats-view.py`, `patches/04-people-page/people-stats-service.ts`, `patches/04-people-page/people-page.tsx`
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG → v1.33i)
+- `build.bat`: nessuna nuova copy step (modifiche in-place ai file v1.18/v1.19)
+
+---
+
+## [v1.33h] - 2026-05-01 (hotfix: rejected logs esclusi dai totali)
+
+### Fixato
+- **Issue sidebar widget "Logged: Xh"** sommava anche i log `rejected` (lavoro respinto dall'admin). Fix: `useTimeLogs.totalSeconds` filtra `approval_status !== "rejected"`.
+- **Timesheet summary card "Total"** stessa storia. Fix: aggregate backend `total_seconds=Sum(filter=~Q(approval_status="rejected"))`.
+
+### Aggiunto
+- **`rejected_seconds`** come metrica separata nell'aggregate del report endpoint.
+- **Summary card "Rejected"** (rossa) appare nel timesheet solo se `rejected_seconds > 0`. Layout grid passa a 4 colonne quando visibile, resta a 3 quando non c'e' niente di respinto (no clutter per chi non usa l'approval workflow).
+
+### Logica decisionale
+- `rejected` → escluso da totali (lavoro non contato)
+- `pending` → contato nei totali (work-in-progress di approvazione, ma l'utente l'ha gia' loggato)
+- `approved` + `auto` → contati normalmente
+
+### File toccati
+- Modificati: `use-time-logs.ts`, `time-log-view.py`, `time-log-service.ts` (type), `timesheet-root.tsx`
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG → v1.33h)
+
+---
+
+## [v1.33g] - 2026-05-01 (hotfix: client-side gating dei consumer Time Tracking)
+
+### Fixato
+- **Toggle settings non avevano effetto sui consumer**: i 3 toggle in `/settings/time-tracking/` salvavano correttamente in DB ma `TimeTrackingSection` (sidebar issue) e `ActiveTimerBanner` (banner persistente) ignoravano i flag e si mostravano sempre.
+- **`time-tracking-section.tsx`** (= stub IssueWorklogProperty CE):
+  - Legge `time_tracking_enabled` (default `true` per back-compat) → ritorna `null` se OFF.
+  - Legge `time_tracking_timer_enabled` (default `true`) → quando OFF nasconde badge live timer + pulsanti Start/Stop/Cancel, lasciando solo "Log time" manuale.
+- **`active-timer-banner.tsx`**: ritorna `null` se uno dei due flag e' OFF.
+
+### Pattern back-compat
+- `getFlag(key, true)` come default: workspace senza record `workspace_feature_settings` continuano a vedere il widget (no breaking change per chi gia' usava la feature pre-v1.33f). Solo quando l'admin esplicitamente toggle OFF, sparisce.
+
+### File toccati
+- Modificati: `patches/12-time-tracking/time-tracking-section.tsx`, `active-timer-banner.tsx`
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG → v1.33g)
+
+---
+
+## [v1.33f] - 2026-05-01 (Time Tracking MVP COMPLETE - slice 5b: UI Settings + Report + sidebar)
+
+### Aggiunto
+- **Settings page** `/[workspaceSlug]/settings/time-tracking/`:
+  - 3 toggle (master/timer/approval) editabili solo da ADMIN. MEMBER vede read-only.
+  - Voce nel sidebar settings sotto "FEATURES" con icona Clock.
+  - Salvataggio one-click via PATCH `feature-settings/`. Il backend fa il merge.
+- **Report page** `/[workspaceSlug]/timesheet/`:
+  - Filtri: User (admin solo), Project, Period (today/this week/this month/last 30/all), Approval status.
+  - Summary cards: Total / Approved / Pending hours.
+  - Tabella log con avatar utente, indicatori source/status, durata, descrizione.
+  - Bottoni Approve/Reject (admin only) per log pending; Delete (owner se in auto/pending, admin sempre).
+- **Sidebar workspace**: nuova voce "Timesheet" sotto "People" con icona Clock (ADMIN+MEMBER).
+- **Frontend infra**:
+  - `services/feature-settings.service.ts` — getSettings/patchSettings (merge sui flag).
+  - `hooks/use-feature-settings.ts` — SWR cache + `getFlag(key, default)` helper.
+
+### File toccati
+- Nuovi: `feature-settings-service.ts`, `use-feature-settings.ts`, `time-tracking-settings-form.tsx`, `time-tracking-settings-page.tsx`, `time-tracking-settings-header.tsx`, `timesheet-page.tsx`, `timesheet-layout.tsx`, `timesheet-header.tsx`, `timesheet-root.tsx`
+- Full replacement (estende v1.19/v1.20d): `types-settings.ts`, `constants-settings-workspace.ts`, `sidebar-item-icon.tsx`, `routes-core.ts`, `constants-workspace.ts`, `sidebar-helper.tsx`, `sidebar-item-base.tsx`
+- `build.bat` (~14 nuove copy step + creazione cartelle additive)
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG → v1.33f)
+
+### Time Tracking MVP completo
+A questo punto il sistema Time Tracking e' **end-to-end funzionante**:
+- Backend (v1.33a-b-e): TimeLog + ActiveTimer + WorkspaceFeatureSettings + endpoint CRUD/approve/reject
+- UI sidebar issue (v1.33c): widget Time tracking + log modal + recent entries
+- Banner timer (v1.33d): visibile in tutte le pagine workspace quando timer attivo
+- Settings (v1.33f): toggle 3 flag
+- Report page (v1.33f): timesheet filtrabile
+
+### Cosa **non** fa il Time Tracking MVP
+- Export CSV (rinviato a v1.36, non in MVP per design choice)
+- Colonne hours su People page (rinviata se vuoi farla in v1.33g separato)
+- Estimate vs Actual hours percentage (mostrato come "Logged: X" senza confronto stima)
+
+---
+
 ## [v1.33e] - 2026-05-01 (Time Tracking slice 5a: backend settings + approval)
 
 ### Aggiunto

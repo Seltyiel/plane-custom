@@ -9,6 +9,11 @@
  * PATCH (plane-custom) v1.19b:
  *  Riscrittura come LISTA/TABELLA ESPANDIBILE con tree task/subtask.
  *
+ * PATCH (plane-custom) v1.33i:
+ *  Aggiunte le ore loggate (Time Tracking):
+ *    - colonna "Hours" nella tabella issues di ogni utente
+ *    - stat "Hours" nell'header di ogni member (totale workspace, esclude rejected)
+ *
  * PATCH (plane-custom) v1.19c:
  *  Pagina INTERATTIVA allineata alle altre view di Plane (Spreadsheet-like).
  *
@@ -41,7 +46,7 @@ import { useMemo, useState } from "react";
 import { observer } from "mobx-react";
 import { useParams } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
-import { ChevronRight, ChevronDown, X as XIcon } from "lucide-react";
+import { ChevronRight, ChevronDown, Clock, X as XIcon } from "lucide-react";
 // plane imports
 import { Avatar } from "@plane/propel/avatar";
 import { Loader } from "@plane/ui";
@@ -49,12 +54,18 @@ import type { TIssue, TIssuePriorities } from "@plane/types";
 import { getFileURL, renderFormattedPayloadDate, getDate } from "@plane/utils";
 // components
 import { PageHead } from "@/components/core/page-title";
+// PATCH v1.33j: serve montare <IssuePeekOverview/> nel render tree
+// altrimenti il click "Open work item" setta lo store ma il peek non
+// si renderizza (il componente listener manca dalla pagina).
+import { IssuePeekOverview } from "@/components/issues/peek-overview";
 import { StateDropdown } from "@/components/dropdowns/state/dropdown";
 import { PriorityDropdown } from "@/components/dropdowns/priority";
 import { DateDropdown } from "@/components/dropdowns/date";
 import { MemberDropdown } from "@/components/dropdowns/member/dropdown";
 // hooks
 import useIssuePeekOverviewRedirection from "@/hooks/use-issue-peek-overview-redirection";
+// PATCH v1.33i: helper formattazione durate Time Tracking.
+import { formatDurationHM } from "@/lib/format-duration";
 // services
 import { IssueService } from "@/services/issue";
 import type { TPeopleStatsEntry, TMemberIssue } from "@/services/people-stats.service";
@@ -346,7 +357,7 @@ const IssueRow = observer(function IssueRow(props: TIssueRowProps) {
   return (
     <>
       <div
-        className="group grid grid-cols-[minmax(260px,2fr)_minmax(140px,1fr)_minmax(120px,1fr)_minmax(100px,120px)_minmax(100px,120px)_minmax(80px,120px)] items-center gap-0 border-t border-subtle text-12 hover:bg-layer-1/60"
+        className="group grid grid-cols-[minmax(260px,2fr)_minmax(140px,1fr)_minmax(120px,1fr)_minmax(100px,120px)_minmax(100px,120px)_minmax(80px,120px)_minmax(70px,90px)] items-center gap-0 border-t border-subtle text-12 hover:bg-layer-1/60"
         style={{ paddingLeft: indent }}
       >
         {/* Col 1: identifier + name (clickable peek) */}
@@ -442,6 +453,20 @@ const IssueRow = observer(function IssueRow(props: TIssueRowProps) {
             showTooltip
           />
         </div>
+
+        {/* PATCH v1.33i — Col 7: Hours loggate (read-only, esclude rejected). */}
+        <div className="flex min-w-0 items-center justify-end gap-1 border-l border-subtle px-3 py-1.5 tabular-nums">
+          {node.time_logged_seconds > 0 ? (
+            <>
+              <Clock className="size-3 text-tertiary" />
+              <span className="text-12 text-secondary">
+                {formatDurationHM(node.time_logged_seconds)}
+              </span>
+            </>
+          ) : (
+            <span className="text-11 text-placeholder">—</span>
+          )}
+        </div>
       </div>
       {node.children.map((c) => (
         <IssueRow
@@ -536,14 +561,17 @@ const ExpandedTree = observer(function ExpandedTree({
         </div>
       )}
 
-      {/* Header row (spreadsheet-like) */}
-      <div className="grid grid-cols-[minmax(260px,2fr)_minmax(140px,1fr)_minmax(120px,1fr)_minmax(100px,120px)_minmax(100px,120px)_minmax(80px,120px)] items-center gap-0 bg-layer-1/30 text-10 uppercase tracking-wide text-placeholder">
+      {/* Header row (spreadsheet-like).
+          PATCH v1.33j: aggiunta 7a colonna "Hours" per allinearsi alle
+          righe IssueRow (la grid template DEVE matchare). */}
+      <div className="grid grid-cols-[minmax(260px,2fr)_minmax(140px,1fr)_minmax(120px,1fr)_minmax(100px,120px)_minmax(100px,120px)_minmax(80px,120px)_minmax(70px,90px)] items-center gap-0 bg-layer-1/30 text-10 uppercase tracking-wide text-placeholder">
         <span className="px-3 py-1.5">Work item</span>
         <span className="border-l border-subtle px-3 py-1.5">State</span>
         <span className="border-l border-subtle px-3 py-1.5">Priority</span>
         <span className="border-l border-subtle px-3 py-1.5">Start date</span>
         <span className="border-l border-subtle px-3 py-1.5">Due date</span>
         <span className="border-l border-subtle px-3 py-1.5">Assignees</span>
+        <span className="border-l border-subtle px-3 py-1.5 text-right">Hours</span>
       </div>
 
       {filtered.length === 0 ? (
@@ -664,6 +692,23 @@ const MemberRow = observer(function MemberRow({ entry, slug }: { entry: TPeopleS
             </span>
             <span className="text-10 uppercase tracking-wide text-placeholder">Overdue</span>
           </button>
+          {/* PATCH v1.33i: ore loggate da QUESTO user nel workspace (esclude rejected). */}
+          <div
+            title="Total hours logged by this user in the workspace (excluding rejected)"
+            className="flex flex-col items-end rounded-sm px-2 py-1"
+          >
+            <span className="flex items-center gap-1 text-16 font-semibold text-primary tabular-nums">
+              {stats.total_logged_seconds > 0 ? (
+                <>
+                  <Clock className="size-3.5 text-tertiary" />
+                  {formatDurationHM(stats.total_logged_seconds)}
+                </>
+              ) : (
+                <span className="text-placeholder">—</span>
+              )}
+            </span>
+            <span className="text-10 uppercase tracking-wide text-placeholder">Hours</span>
+          </div>
         </div>
 
         {/* state group breakdown */}
@@ -700,13 +745,41 @@ const MemberRow = observer(function MemberRow({ entry, slug }: { entry: TPeopleS
 
 // ===== page ==============================================================
 
+// PATCH v1.33l: filtri Hours per la People page header.
+type THoursPeriod = "today" | "this_week" | "this_month" | "last_30_days" | "all";
+type THoursStates = "active" | "completed" | "cancelled" | "all";
+
+const HOURS_PERIOD_LABEL: Record<THoursPeriod, string> = {
+  today: "Today",
+  this_week: "This week",
+  this_month: "This month",
+  last_30_days: "Last 30 days",
+  all: "All time",
+};
+const HOURS_STATES_LABEL: Record<THoursStates, string> = {
+  active: "Active only",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  all: "All states",
+};
+
 export default observer(function WorkspacePeoplePage() {
   const { workspaceSlug } = useParams();
   const slug = workspaceSlug?.toString() ?? "";
 
+  // PATCH v1.33l: state dei filtri Hours.
+  const [hoursPeriod, setHoursPeriod] = useState<THoursPeriod>("all");
+  const [hoursStates, setHoursStates] = useState<THoursStates>("all");
+
   const { data, error, isLoading } = useSWR(
-    slug ? `workspace-members-stats-${slug}` : null,
-    slug ? () => peopleStatsService.fetchWorkspaceMembersStats(slug) : null,
+    slug ? `workspace-members-stats-${slug}-${hoursPeriod}-${hoursStates}` : null,
+    slug
+      ? () =>
+          peopleStatsService.fetchWorkspaceMembersStats(slug, {
+            hoursPeriod,
+            hoursStates,
+          })
+      : null,
     { revalidateOnFocus: false }
   );
 
@@ -723,6 +796,9 @@ export default observer(function WorkspacePeoplePage() {
   return (
     <>
       <PageHead title="People" />
+      {/* PATCH v1.33j: peek overview listener — handleRedirection setta lo
+          store, questo componente legge lo store e mostra il modal del task. */}
+      <IssuePeekOverview />
       <div className="relative h-full w-full overflow-hidden overflow-y-auto p-4">
         <div className="mx-auto flex max-w-[1400px] flex-col gap-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -737,6 +813,39 @@ export default observer(function WorkspacePeoplePage() {
             <div className="rounded-md border border-subtle bg-layer-0 px-3 py-2">
               <span className="text-11 uppercase tracking-wide text-placeholder">Total overdue</span>
               <div className="text-18 font-semibold text-danger-primary">{totalOverdue}</div>
+            </div>
+
+            {/* PATCH v1.33l: filtri Hours (period + state group).
+                Dropdowns nativi <select> per stare leggeri. */}
+            <div className="ml-auto flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-11 text-placeholder">
+                Hours period:
+                <select
+                  value={hoursPeriod}
+                  onChange={(e) => setHoursPeriod(e.target.value as THoursPeriod)}
+                  className="rounded-sm border border-subtle bg-layer-1 px-2 py-1 text-12 text-primary"
+                >
+                  {(Object.keys(HOURS_PERIOD_LABEL) as THoursPeriod[]).map((k) => (
+                    <option key={k} value={k}>
+                      {HOURS_PERIOD_LABEL[k]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-1.5 text-11 text-placeholder">
+                State:
+                <select
+                  value={hoursStates}
+                  onChange={(e) => setHoursStates(e.target.value as THoursStates)}
+                  className="rounded-sm border border-subtle bg-layer-1 px-2 py-1 text-12 text-primary"
+                >
+                  {(Object.keys(HOURS_STATES_LABEL) as THoursStates[]).map((k) => (
+                    <option key={k} value={k}>
+                      {HOURS_STATES_LABEL[k]}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
           </div>
 
