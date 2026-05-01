@@ -1,0 +1,20 @@
+=== plane-custom v1.33b FUNCTIONAL verify === 
+Started at 01/05/2026 17:07:20,19 
+ 
+=== Esecuzione test ORM dentro container API === 
+Test combo: workspace=oniro issue=1 user=luca.cervone@oniro.tech
+[PASS] Step 1 - combo found
+[PASS] Step 2 - cleanup pre-existing timer
+[PASS] Step 3 - START timer
+[PASS] Step 4 - GET active timer: elapsed=0.00s
+[PASS] Step 5 - UNIQUE constraint enforces 1 timer per user: IntegrityError as expected
+[PASS] Step 6 - STOP creates TimeLog and deletes timer: duration=2s
+[PASS] Step 7 - TimeLog source='timer' and timer_started_at set
+[PASS] Step 8 - ActiveTimer deleted after stop
+[PASS] Step 9a - issue can become NULL (FK SET_NULL works)
+[PASS] Step 9b - cleanup orphan timer
+[PASS] Step 10 - CLEANUP TimeLog di test
+
+*** TUTTI I TEST PASSATI ***
+ 
+*** VERIFICA FUNZIONALE OK - v1.33b stabile *** 

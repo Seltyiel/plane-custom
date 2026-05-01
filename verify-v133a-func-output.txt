@@ -1,0 +1,17 @@
+=== plane-custom v1.33a FUNCTIONAL verify === 
+Started at 01/05/2026 17:04:14,09 
+ 
+=== Esecuzione test ORM dentro container API === 
+Test combo: workspace=oniro project=BOLO issue=1 user=luca.cervone@oniro.tech
+[PASS] Step 1 - combo (ws/project/issue/user) found
+[PASS] Step 2 - CREATE TimeLog (3600s): id=43e8596f-a0c8-4f99-9db7-790d92e261cc
+[PASS] Step 3 - READ via .objects.get()
+[PASS] Step 4 - SERIALIZER includes annotated fields: all keys present
+[PASS] Step 5 - UPDATE duration 3600 -^> 5400
+[PASS] Step 6 - CHECK CONSTRAINT rejects duration=-1: IntegrityError as expected
+[PASS] Step 7 - SOFT DELETE (deleted_at popolato, escluso da default qs)
+[PASS] Step 8 - CLEANUP hard delete record di test
+
+*** TUTTI I TEST PASSATI ***
+ 
+*** VERIFICA FUNZIONALE OK - v1.33a stabile *** 

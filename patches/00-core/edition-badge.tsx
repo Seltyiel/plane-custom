@@ -21,6 +21,63 @@ import { Button } from "@plane/propel/button";
 // feature delle versioni precedenti il quick-add inline funziona ora anche
 // in Workspace Views, Your Work, Calendar workspace.
 //
+// v1.33b: Time Tracking backend (MVP slice 2/5) - timer start/stop.
+//   - Tabella active_timers (migration 0125) con UNIQUE su user_id
+//     (1 timer per utente max, enforced a livello DB).
+//   - Endpoint:
+//       GET    /workspaces/<slug>/timer/         → timer attivo o 204
+//       DELETE /workspaces/<slug>/timer/         → cancella timer (no log)
+//       POST   /workspaces/<slug>/timer/start/   → avvia timer
+//                                                  body: {issue_id, description?}
+//                                                  409 se esiste gia' timer
+//       POST   /workspaces/<slug>/timer/stop/    → calcola duration,
+//                                                  crea TimeLog source='timer',
+//                                                  cancella ActiveTimer.
+//                                                  body: {description?}
+//   - Edge cases gestiti:
+//       * Timer gia' attivo a start → 409 con timer corrente nel body
+//       * Issue cancellata mentre timer girava (FK SET_NULL) → cancel
+//         timer + 200 con warning, niente log orfano
+//       * Duration < 1s → cancel timer + 400 (impossibile in pratica)
+//       * Duration > 7 giorni → 400 (timer dimenticato, blocchiamo)
+//   - Stop e' atomico: TimeLog create + ActiveTimer delete in transaction.
+//
+//   Cosa NON fa v1.33b:
+//   - UI sidebar issue (v1.33c)
+//   - Banner timer persistente in alto (v1.33d)
+//   - Nessuna gestione "ferma il timer di un altro utente" (out of MVP)
+//
+// v1.33a: Time Tracking backend (MVP slice 1/5).
+//   - Tabella time_logs (migration 0124) con duration_seconds
+//     (CheckConstraint: > 0 e <= 7 giorni), logged_at, source
+//     (manual|timer), description, approval_status (auto|pending|
+//     approved|rejected). FK a workspace/project/issue/user. 4 indici
+//     ottimizzati per i pattern di query principali (user+date,
+//     issue, workspace+date, partial pending).
+//   - Endpoint REST:
+//       POST   /workspaces/<slug>/projects/<pid>/issues/<iid>/time-logs/
+//       GET    .../time-logs/                              (list per issue)
+//       GET    /workspaces/<slug>/time-logs/?from=&to=&user_id=&...
+//                                                          (report query
+//                                                           con totals
+//                                                           aggregati)
+//       GET    /workspaces/<slug>/time-logs/<id>/          (detail)
+//       PATCH  /workspaces/<slug>/time-logs/<id>/
+//       DELETE /workspaces/<slug>/time-logs/<id>/          (soft)
+//   - Permessi: workspace MEMBER puo' loggare su task dei progetti dove
+//     e' member; vede solo i propri log nel report (admin vede tutti).
+//     Edit/delete: owner finche' approval_status in (auto, pending),
+//     poi solo admin.
+//   - Approve/reject NON in v1.33a: arrivano in v1.33e con il setting
+//     `time_tracking_approval_required`. Per ora tutti i log sono
+//     `approval_status='auto'`.
+//
+//   Cosa NON fa v1.33a:
+//   - UI sidebar issue (v1.33c)
+//   - Timer start/stop (v1.33b)
+//   - Report page /timesheet/ (v1.33e)
+//   - Settings toggle (v1.33e)
+//
 // v1.32 RITIRATA (rollback v1.32r):
 //   Avevo aggiunto un <RecentActivityWidget/> con presetFilter="issue"
 //   sotto Today/Overdue. Si e' rivelato duplicato del widget Recents
@@ -1065,7 +1122,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.32r";
+const CUSTOM_PATCH_TAG = "PATCHED v1.33b";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

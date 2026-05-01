@@ -145,6 +145,46 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\11-quick-actions\workspace-draft-delete-modal.tsx" "%PLANE_SRC%\apps\web\core\components\issues\workspace-draft\delete-modal.tsx" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.33a: backend Time Tracking - TimeLog model + serializer + view + URLs.
+REM Tabella nuova `time_logs`, migration 0124, endpoint CRUD + report query.
+REM Approve/reject NON inclusi - quelli arrivano in v1.33e con il setting
+REM workspace `time_tracking_approval_required`. In MVP tutti i log creati
+REM sono `approval_status='auto'` (visibili nei report immediatamente).
+REM
+REM Models __init__.py full-replacement per registrare TimeLog.
+copy /Y "%PATCHES_DIR%\12-time-tracking\plane-db-models-init.py" "%PLANE_SRC%\apps\api\plane\db\models\__init__.py" >nul
+if errorlevel 1 goto :patcherr
+REM Model file (additivo, file nuovo).
+copy /Y "%PATCHES_DIR%\12-time-tracking\time-log-model.py" "%PLANE_SRC%\apps\api\plane\db\models\time_log.py" >nul
+if errorlevel 1 goto :patcherr
+REM Migration (additiva, file nuovo).
+copy /Y "%PATCHES_DIR%\12-time-tracking\migration-0124-time-logs.py" "%PLANE_SRC%\apps\api\plane\db\migrations\0124_v133a_time_logs.py" >nul
+if errorlevel 1 goto :patcherr
+REM Serializer (additivo, file nuovo).
+copy /Y "%PATCHES_DIR%\12-time-tracking\time-log-serializer.py" "%PLANE_SRC%\apps\api\plane\app\serializers\time_log.py" >nul
+if errorlevel 1 goto :patcherr
+REM View (additivo, file nuovo).
+copy /Y "%PATCHES_DIR%\12-time-tracking\time-log-view.py" "%PLANE_SRC%\apps\api\plane\app\views\workspace\time_log.py" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.33b: backend Time Tracking - ActiveTimer + endpoint start/stop.
+REM Tabella nuova `active_timers` con UNIQUE su user_id (1 timer per user max),
+REM migration 0125, endpoint GET/POST/DELETE su /timer/ + POST /timer/start/
+REM e /timer/stop/. Stop crea TimeLog con source='timer' e cancella il timer.
+REM
+REM Model file (additivo).
+copy /Y "%PATCHES_DIR%\12-time-tracking\active-timer-model.py" "%PLANE_SRC%\apps\api\plane\db\models\active_timer.py" >nul
+if errorlevel 1 goto :patcherr
+REM Migration 0125 (additiva).
+copy /Y "%PATCHES_DIR%\12-time-tracking\migration-0125-active-timer.py" "%PLANE_SRC%\apps\api\plane\db\migrations\0125_v133b_active_timer.py" >nul
+if errorlevel 1 goto :patcherr
+REM Serializer (additivo).
+copy /Y "%PATCHES_DIR%\12-time-tracking\active-timer-serializer.py" "%PLANE_SRC%\apps\api\plane\app\serializers\active_timer.py" >nul
+if errorlevel 1 goto :patcherr
+REM View (additivo).
+copy /Y "%PATCHES_DIR%\12-time-tracking\active-timer-view.py" "%PLANE_SRC%\apps\api\plane\app\views\workspace\active_timer.py" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.23d: Gantt drag click leak. Aggiunto tracking distanza mouse
 REM tra mousedown e click. Se > 5px, click ignorato (era drag).
 copy /Y "%PATCHES_DIR%\01-layouts\workspace-roots\gantt-blocks.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\gantt\blocks.tsx" >nul

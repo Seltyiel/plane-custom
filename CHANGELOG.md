@@ -6,6 +6,77 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.33b] - 2026-05-01 (Time Tracking MVP slice 2/5: timer start/stop)
+
+### Aggiunto
+- **Tabella `active_timers`** (migration `0125_v133b_active_timer.py`):
+  - `user_id` UNIQUE (1 solo timer attivo per utente, enforced a livello DB).
+  - `workspace_id`, `issue_id` (FK SET_NULL: se l'issue viene cancellata mentre il timer gira, il record sopravvive con issue=NULL e lo `stop()` lo gestisce).
+  - `started_at` (auto_now_add), `description` (opzionale, settabile a start o sovrascrivibile a stop).
+- **Endpoint REST**:
+  - `GET /workspaces/<slug>/timer/` → ritorna l'`ActiveTimer` corrente o `204` se nessun timer attivo. Include campi annotati `issue_name`, `issue_sequence_id`, `project_identifier`, `elapsed_seconds` (calcolato server-side, baseline per il banner UI).
+  - `DELETE /workspaces/<slug>/timer/` → cancella timer corrente senza creare alcun `TimeLog`.
+  - `POST /workspaces/<slug>/timer/start/` body `{issue_id, description?}` → crea `ActiveTimer`. **409 Conflict** se ne esiste gia' uno (con il timer corrente nel body cosi' frontend puo' chiedere conferma "fermo l'altro?").
+  - `POST /workspaces/<slug>/timer/stop/` body `{description?}` → calcola `duration_seconds = NOW - started_at`, crea `TimeLog` con `source='timer'` + `timer_started_at`, cancella `ActiveTimer`. Atomico in `transaction.atomic()`.
+
+### Edge cases gestiti
+- **Timer gia' attivo a start** → 409 + ritorna il timer corrente nel body.
+- **Issue cancellata mentre timer girava** (FK è SET_NULL) → cancella timer + 200 con messaggio, **NON** crea `TimeLog` orfano.
+- **Duration < 1 second** → 400 + cancel timer (impossibile in pratica, ma sanity check).
+- **Duration > 7 giorni** (`TIME_LOG_MAX_DURATION_SECONDS`) → 400 con messaggio "timer probabilmente dimenticato, usa DELETE /timer/ per cancellarlo manualmente". Senza questo, il `CheckConstraint` di `time_logs` rifiuterebbe l'INSERT con un errore generico.
+
+### File toccati
+- Nuovi: `patches/12-time-tracking/active-timer-model.py`, `migration-0125-active-timer.py`, `active-timer-serializer.py`, `active-timer-view.py`
+- Modificato: `patches/12-time-tracking/plane-db-models-init.py` (aggiunto import `ActiveTimer`)
+- Modificato: `patches/03-backend/api-urls-workspace.py` (3 import + 3 path)
+- `build.bat` (4 nuove copy step v1.33b)
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG → v1.33b)
+
+### Cosa NON fa in v1.33b (in arrivo)
+- v1.33c: UI sidebar issue (Time tracking section + Manual log modal + Recent entries + Start timer button)
+- v1.33d: Timer banner persistent in alto (visibile su tutte le pagine)
+- v1.33e: Settings + approval workflow + report page `/timesheet/` + colonne People
+
+---
+
+## [v1.33a] - 2026-04-30 (Time Tracking MVP slice 1/5: backend)
+
+### Aggiunto
+- **Tabella `time_logs`** (migration `0124_v133a_time_logs.py`):
+  - Campi: `workspace_id`, `project_id`, `issue_id`, `user_id`, `duration_seconds` (INT, CheckConstraint range valido: >0 e <=7 giorni), `logged_at`, `description`, `source` (`manual`|`timer`), `timer_started_at`, `approval_status` (`auto`|`pending`|`approved`|`rejected`), `approved_by_id`, `approved_at`, `rejection_reason`.
+  - 4 indici: `(user, -logged_at)`, `(issue, -logged_at)`, `(workspace, logged_at)`, partial `(workspace, approval_status)` WHERE pending.
+  - Soft delete via `AuditModel` (ereditato da `BaseModel`).
+- **Endpoint REST**:
+  - `POST/GET /workspaces/<slug>/projects/<pid>/issues/<iid>/time-logs/` → create log + list per issue
+  - `GET /workspaces/<slug>/time-logs/?from=&to=&user_id=&project_id=&approval_status=` → report con paginazione + `totals` aggregati (total/approved/pending seconds)
+  - `GET/PATCH/DELETE /workspaces/<slug>/time-logs/<id>/` → detail/edit/delete
+- **Permessi**:
+  - Create: workspace MEMBER/ADMIN, solo per se stesso, solo se member del project del task.
+  - List per issue: chiunque sia project member.
+  - Report query: MEMBER vede solo i propri log; ADMIN vede tutto.
+  - Edit/Delete: owner finche' `approval_status in (auto, pending)`, poi solo ADMIN.
+- **Serializer** `TimeLogSerializer` con annotated read-only fields (`user_display_name`, `user_avatar_url`, `issue_name`, `issue_sequence_id`, `project_identifier`) per evitare round-trip extra al frontend.
+
+### Note design
+- **`issue_id` NOT NULL** in MVP: niente "ore generiche" senza task. Si potra' allentare in futuro.
+- **`approval_status='auto'`** di default: tutti i log creati ora sono immediatamente conteggiati. L'approval workflow e' attivabile in v1.33e con il setting workspace `time_tracking_approval_required`.
+- **Nessun gating per feature flag** in v1.33a: gli endpoint sono live appena buildati. Aggiungeremo il check `time_tracking_enabled` quando arrivera' la pagina settings (v1.33e).
+
+### File toccati
+- Nuovi: `patches/12-time-tracking/time-log-model.py`, `migration-0124-time-logs.py`, `time-log-serializer.py`, `time-log-view.py`
+- Full replacement: `patches/12-time-tracking/plane-db-models-init.py` (per registrare TimeLog nell'app `db`)
+- Modificato: `patches/03-backend/api-urls-workspace.py` (3 nuove route + 1 import)
+- `build.bat` (5 nuove copy step v1.33a)
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG -> v1.33a)
+
+### Cosa fa NON in v1.33a (in arrivo)
+- v1.33b: ActiveTimer model + start/stop endpoint + sidebar button
+- v1.33c: UI sidebar issue (Time tracking section + manual log modal + recent entries)
+- v1.33d: timer banner persistent
+- v1.33e: settings page + approval workflow + report page `/timesheet/` + People page columns
+
+---
+
 ## [v1.32r] - 2026-04-30 (rollback)
 
 ### Rimosso

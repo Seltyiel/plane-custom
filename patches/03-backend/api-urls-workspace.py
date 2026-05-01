@@ -79,6 +79,17 @@ from plane.app.views.workspace.workspace_project import WorkspaceProjectEndpoint
 from plane.app.views.workspace.issue_move import MoveIssueEndpoint
 # PATCH v1.26a: my dashboard KPI endpoint.
 from plane.app.views.workspace.dashboard import MyDashboardEndpoint
+# PATCH v1.33a: time tracking endpoints.
+from plane.app.views.workspace.time_log import (
+    IssueTimeLogEndpoint,
+    WorkspaceTimeLogEndpoint,
+)
+# PATCH v1.33b: timer start/stop endpoints.
+from plane.app.views.workspace.active_timer import (
+    ActiveTimerEndpoint,
+    TimerStartEndpoint,
+    TimerStopEndpoint,
+)
 
 
 urlpatterns = [
@@ -256,6 +267,41 @@ urlpatterns = [
         "workspaces/<str:slug>/me/dashboard/",
         MyDashboardEndpoint.as_view(),
         name="workspace-my-dashboard",
+    ),
+    # PATCH v1.33a: time tracking.
+    # Issue-scoped: list/create log su una specifica issue.
+    path(
+        "workspaces/<str:slug>/projects/<uuid:project_id>/issues/<uuid:issue_id>/time-logs/",
+        IssueTimeLogEndpoint.as_view(),
+        name="issue-time-logs",
+    ),
+    # Workspace-scoped: report query con filtri (from, to, user_id, project_id, approval_status).
+    path(
+        "workspaces/<str:slug>/time-logs/",
+        WorkspaceTimeLogEndpoint.as_view(),
+        name="workspace-time-logs",
+    ),
+    # Single log: GET/PATCH/DELETE.
+    path(
+        "workspaces/<str:slug>/time-logs/<uuid:log_id>/",
+        WorkspaceTimeLogEndpoint.as_view(),
+        name="workspace-time-log-detail",
+    ),
+    # PATCH v1.33b: timer start/stop/get/cancel.
+    path(
+        "workspaces/<str:slug>/timer/",
+        ActiveTimerEndpoint.as_view(),
+        name="workspace-timer",
+    ),
+    path(
+        "workspaces/<str:slug>/timer/start/",
+        TimerStartEndpoint.as_view(),
+        name="workspace-timer-start",
+    ),
+    path(
+        "workspaces/<str:slug>/timer/stop/",
+        TimerStopEndpoint.as_view(),
+        name="workspace-timer-stop",
     ),
     path(
         "workspaces/<str:slug>/estimates/",
