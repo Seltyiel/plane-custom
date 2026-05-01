@@ -90,6 +90,14 @@ from plane.app.views.workspace.active_timer import (
     TimerStartEndpoint,
     TimerStopEndpoint,
 )
+# PATCH v1.33e: feature settings + approve/reject TimeLog.
+from plane.app.views.workspace.workspace_feature_settings import (
+    WorkspaceFeatureSettingsEndpoint,
+)
+from plane.app.views.workspace.time_log import (
+    TimeLogApproveEndpoint,
+    TimeLogRejectEndpoint,
+)
 
 
 urlpatterns = [
@@ -302,6 +310,23 @@ urlpatterns = [
         "workspaces/<str:slug>/timer/stop/",
         TimerStopEndpoint.as_view(),
         name="workspace-timer-stop",
+    ),
+    # PATCH v1.33e: workspace feature settings (generic toggle table).
+    path(
+        "workspaces/<str:slug>/feature-settings/",
+        WorkspaceFeatureSettingsEndpoint.as_view(),
+        name="workspace-feature-settings",
+    ),
+    # PATCH v1.33e: approve/reject TimeLog (admin only).
+    path(
+        "workspaces/<str:slug>/time-logs/<uuid:log_id>/approve/",
+        TimeLogApproveEndpoint.as_view(),
+        name="workspace-time-log-approve",
+    ),
+    path(
+        "workspaces/<str:slug>/time-logs/<uuid:log_id>/reject/",
+        TimeLogRejectEndpoint.as_view(),
+        name="workspace-time-log-reject",
     ),
     path(
         "workspaces/<str:slug>/estimates/",

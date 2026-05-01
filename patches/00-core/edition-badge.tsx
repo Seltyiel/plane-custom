@@ -21,6 +21,80 @@ import { Button } from "@plane/propel/button";
 // feature delle versioni precedenti il quick-add inline funziona ora anche
 // in Workspace Views, Your Work, Calendar workspace.
 //
+// v1.33e: Time Tracking backend settings + approval (slice 5a/5).
+//   - Tabella generica workspace_feature_settings (migration 0126):
+//     OneToOneField su workspace + features JSONB. Riusabile per
+//     Meeting v1.34 e altre feature future (basta scrivere nuove
+//     chiavi nel JSON, no migration).
+//   - Helper get_workspace_feature(workspace, key, default) per
+//     leggere flag senza try/except, safe-default.
+//   - Endpoint:
+//       GET   /workspaces/<slug>/feature-settings/   -> {features:{...}}
+//       PATCH /workspaces/<slug>/feature-settings/   ADMIN only,
+//                                                    merge sui flag
+//                                                    esistenti (no replace
+//                                                    totale)
+//       POST  /workspaces/<slug>/time-logs/<id>/approve/   ADMIN only
+//       POST  /workspaces/<slug>/time-logs/<id>/reject/    ADMIN only,
+//                                                    body: {reason?}
+//   - TimeLog creation gating: se time_tracking_approval_required=true
+//     i nuovi log nascono 'pending' invece di 'auto'. Vale sia per i
+//     log manuali (POST issue/time-logs) sia per il timer-stop.
+//   - approve/reject: 400 se status non e' 'pending' (no doppio approve).
+//
+//   v1.33f (prossima): UI - Settings page con toggle, Report page
+//   /timesheet/ con filtri+approve buttons, People page columns.
+//
+// v1.33d: Time Tracking UI (MVP slice 4/5) - banner timer persistente.
+//   Aggiunge <ActiveTimerBanner/> in cima al WorkspaceLayout, sopra
+//   l'<Outlet/>. Si nasconde automaticamente se non c'e' timer attivo.
+//   Quando c'e' un timer:
+//     - Sticky top-0 z-40 (resta visibile durante scroll)
+//     - Bg success-subtle/40, border bottom success-strong/30
+//     - Live indicator (puntino animato) + cronometro HH:MM:SS che
+//       incrementa client-side ogni 1s
+//     - "Working on PROJECT-NN: Issue title" -> Link al task
+//     - Description (se settata) - hidden su mobile
+//     - [Stop] (verde) ferma + crea log
+//     - [X] (cancel) ferma senza log + confirm dialog
+//   Polling SWR a 5s del hook fa il resync di sicurezza per casi
+//   come "timer fermato da un'altra tab".
+//
+//   File toccati:
+//     - apps/web/core/components/issues/time-tracking/active-timer-banner.tsx (nuovo)
+//     - apps/web/app/(all)/[workspaceSlug]/layout.tsx (full replacement,
+//       solo aggiunto <ActiveTimerBanner/> sopra <Outlet/>)
+//
+//   Cosa NON fa v1.33d:
+//   - Settings page + approval workflow + report page (v1.33e)
+//
+// v1.33c: Time Tracking UI (MVP slice 3/5) - sidebar issue.
+//   Sostituisce lo stub stock IssueWorklogProperty (Plane One paid,
+//   in CE e' return <></>) con la nostra <TimeTrackingSection/>:
+//     - "Logged: Xh Ym" totale loggato sull'issue
+//     - Badge "live timer" con elapsed se il timer e' su QUESTA issue
+//     - Pulsanti [+ Log time] (modal manuale) + [▶ Start timer] / [■ Stop]
+//     - Lista ultimi 5 log con avatar, durata, data, indicatori
+//       (timer/pending/rejected), bottone delete (owner only)
+//   Slot riusato senza patch: il sidebar.tsx (detail) e properties.tsx
+//   (peek) gia' chiamano IssueWorklogProperty con stessa signature.
+//
+//   Frontend infra:
+//     - services/time-log.service.ts (CRUD + report)
+//     - services/active-timer.service.ts (get/start/stop/cancel)
+//     - hooks/use-time-logs.ts (SWR per issue)
+//     - hooks/use-active-timer.ts (SWR + polling 5s)
+//     - lib/format-duration.ts (HH:MM, "Xh Ym", parse)
+//     - components/issues/time-tracking/manual-log-modal.tsx
+//     - components/issues/time-tracking/recent-logs-list.tsx
+//
+//   Edge case 409 "timer gia' attivo su altro task": chiede conferma
+//   "fermo l'altro?", se si esegue stop+start atomicamente.
+//
+//   Cosa NON fa v1.33c:
+//   - Timer banner persistente in alto (v1.33d)
+//   - Settings page + approval workflow + report page (v1.33e)
+//
 // v1.33b: Time Tracking backend (MVP slice 2/5) - timer start/stop.
 //   - Tabella active_timers (migration 0125) con UNIQUE su user_id
 //     (1 timer per utente max, enforced a livello DB).
@@ -1122,7 +1196,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.33b";
+const CUSTOM_PATCH_TAG = "PATCHED v1.33e";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

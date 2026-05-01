@@ -185,6 +185,60 @@ REM View (additivo).
 copy /Y "%PATCHES_DIR%\12-time-tracking\active-timer-view.py" "%PLANE_SRC%\apps\api\plane\app\views\workspace\active_timer.py" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.33c: UI Time Tracking sidebar issue.
+REM Sostituiamo lo stub vuoto stock IssueWorklogProperty con la nostra
+REM implementazione: lo slot nel sidebar.tsx (detail) e properties.tsx
+REM (peek) gia' chiama IssueWorklogProperty con la stessa signature, quindi
+REM la nostra appare automaticamente in entrambi senza patch ai file sidebar.
+REM
+REM Services frontend (file nuovi).
+copy /Y "%PATCHES_DIR%\12-time-tracking\time-log-service.ts" "%PLANE_SRC%\apps\web\core\services\time-log.service.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\12-time-tracking\active-timer-service.ts" "%PLANE_SRC%\apps\web\core\services\active-timer.service.ts" >nul
+if errorlevel 1 goto :patcherr
+REM Hooks SWR (file nuovi).
+copy /Y "%PATCHES_DIR%\12-time-tracking\use-time-logs.ts" "%PLANE_SRC%\apps\web\core\hooks\use-time-logs.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\12-time-tracking\use-active-timer.ts" "%PLANE_SRC%\apps\web\core\hooks\use-active-timer.ts" >nul
+if errorlevel 1 goto :patcherr
+REM Utility format duration (file nuovo).
+copy /Y "%PATCHES_DIR%\12-time-tracking\format-duration.ts" "%PLANE_SRC%\apps\web\core\lib\format-duration.ts" >nul
+if errorlevel 1 goto :patcherr
+REM Sub-componenti UI (file nuovi, vanno in cartella additiva).
+if not exist "%PLANE_SRC%\apps\web\core\components\issues\time-tracking" (
+    mkdir "%PLANE_SRC%\apps\web\core\components\issues\time-tracking"
+)
+copy /Y "%PATCHES_DIR%\12-time-tracking\manual-log-modal.tsx" "%PLANE_SRC%\apps\web\core\components\issues\time-tracking\manual-log-modal.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\12-time-tracking\recent-logs-list.tsx" "%PLANE_SRC%\apps\web\core\components\issues\time-tracking\recent-logs-list.tsx" >nul
+if errorlevel 1 goto :patcherr
+REM TimeTrackingSection -> sostituisce il file stub stock
+REM apps/web/ce/components/issues/worklog/property/root.tsx (full replacement).
+copy /Y "%PATCHES_DIR%\12-time-tracking\time-tracking-section.tsx" "%PLANE_SRC%\apps\web\ce\components\issues\worklog\property\root.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.33d: banner timer persistente in cima alle pagine workspace.
+REM Il banner e' un componente che si nasconde da solo se non c'e' timer
+REM attivo. Iniettato nel WorkspaceLayout (full replacement del file stock).
+copy /Y "%PATCHES_DIR%\12-time-tracking\active-timer-banner.tsx" "%PLANE_SRC%\apps\web\core\components\issues\time-tracking\active-timer-banner.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\12-time-tracking\workspace-layout.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\layout.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.33e: backend settings + approval workflow.
+REM   - Tabella generica workspace_feature_settings (riusabile per Meeting
+REM     v1.34) con migration 0126.
+REM   - Endpoint GET/PATCH /feature-settings/.
+REM   - TimeLog creation gating: se time_tracking_approval_required=true
+REM     i log nascono 'pending', altrimenti 'auto' (back-compat).
+REM   - 2 nuovi endpoint TimeLog: /approve/ e /reject/ (ADMIN only).
+copy /Y "%PATCHES_DIR%\12-time-tracking\workspace-feature-settings-model.py" "%PLANE_SRC%\apps\api\plane\db\models\workspace_feature_settings.py" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\12-time-tracking\migration-0126-feature-settings.py" "%PLANE_SRC%\apps\api\plane\db\migrations\0126_v133e_feature_settings.py" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\12-time-tracking\workspace-feature-settings-view.py" "%PLANE_SRC%\apps\api\plane\app\views\workspace\workspace_feature_settings.py" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.23d: Gantt drag click leak. Aggiunto tracking distanza mouse
 REM tra mousedown e click. Se > 5px, click ignorato (era drag).
 copy /Y "%PATCHES_DIR%\01-layouts\workspace-roots\gantt-blocks.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\gantt\blocks.tsx" >nul

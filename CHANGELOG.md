@@ -6,6 +6,112 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.33e] - 2026-05-01 (Time Tracking slice 5a: backend settings + approval)
+
+### Aggiunto
+- **Tabella `workspace_feature_settings`** (migration `0126_v133e_feature_settings.py`):
+  - `OneToOneField` su workspace + `features` JSONB.
+  - Tabella **generica** riusabile per Meetings (v1.34) e altre feature future: aggiungi un flag scrivendo una chiave nel JSON, senza migration.
+- **Helper `get_workspace_feature(workspace, key, default)`** in `db/models/workspace_feature_settings.py`: lettura safe (mai eccezione, fallback su default) chiamabile da qualsiasi view.
+- **Endpoint settings**:
+  - `GET /workspaces/<slug>/feature-settings/` → `{features: {...}}` (tutti i workspace member).
+  - `PATCH /workspaces/<slug>/feature-settings/` body `{features: {...}}` (ADMIN only). **Merge** sui flag esistenti, non replace totale → setting `time_tracking_enabled` non perde altri flag eventualmente settati in passato.
+- **Approval workflow** attivabile via flag `time_tracking_approval_required`:
+  - Quando ON, i nuovi `TimeLog` (sia da log manuale sia da timer-stop) nascono `approval_status='pending'` invece di `'auto'`.
+  - Quando OFF (default), comportamento back-compat: log immediatamente `'auto'`.
+- **Endpoint `/approve/` e `/reject/`**:
+  - `POST /workspaces/<slug>/time-logs/<id>/approve/` (ADMIN only). 400 se status non e' `'pending'` (idempotenza protetta).
+  - `POST /workspaces/<slug>/time-logs/<id>/reject/` body `{reason?: str}` (ADMIN only). Stessa logica.
+  - Entrambi popolano `approved_by`, `approved_at`. Reject popola anche `rejection_reason` se fornita.
+
+### File toccati
+- Nuovi: `patches/12-time-tracking/workspace-feature-settings-model.py`, `migration-0126-feature-settings.py`, `workspace-feature-settings-view.py`
+- Modificati: `patches/12-time-tracking/time-log-view.py` (gating + 2 nuove view classes), `active-timer-view.py` (gating), `plane-db-models-init.py` (registra `WorkspaceFeatureSettings`)
+- Modificato: `patches/03-backend/api-urls-workspace.py` (3 import + 3 path)
+- `build.bat` (3 nuove copy step v1.33e)
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG → v1.33e)
+
+### Cosa NON fa in v1.33e
+- v1.33f (slice 5b finale): UI Settings page con toggle, Report page `/timesheet/` con filtri + summary + approve/reject buttons per admin, colonne hours su People page.
+
+---
+
+## [v1.33d] - 2026-05-01 (Time Tracking MVP slice 4/5: banner timer persistente)
+
+### Aggiunto
+- **`<ActiveTimerBanner/>`** in cima al `WorkspaceLayout`. Si nasconde automaticamente quando non c'e' timer attivo (`useActiveTimer.timer === null`). Quando c'e' un timer in corso, mostra una barra sticky `top-0 z-40` con:
+  - Live indicator (puntino animato verde)
+  - Cronometro `HH:MM:SS` che incrementa client-side ogni 1s
+  - `Working on PROJECT-NN: Issue title` → Link al task
+  - Description (se settata, hidden su mobile)
+  - `[Stop]` verde → crea TimeLog
+  - `[X]` → confirm dialog → cancella senza log
+- **Resync automatico**: il polling SWR del hook ogni 5s recupera lo stato server-side. Se l'utente ferma il timer da un'altra tab/dispositivo, il banner sparisce entro 5s nelle altre tab senza intervento.
+
+### Layout
+- Banner sticky DENTRO `WorkspaceContentWrapper` → non sovrappone `AppRail` (sidebar workspace switcher) ne' `WorkspaceSidebar` (project list). Occupa solo la larghezza dell'area main content e si comporta come una "info bar" a scorrimento.
+- Z-index 40: sopra il contenuto della pagina, sotto i modal (z-50+) e sotto il sistema di toast.
+- Quando assente, zero impatto sul layout (return null), quindi le pagine workspace non shiftano.
+
+### Edge cases
+- **Timer fermato da altro client**: il banner sparisce entro 5s grazie al polling SWR.
+- **Issue eliminata mentre timer girava**: il backend (v1.33b) `stop()` gestisce con `cancelled, no log created` + warning toast.
+- **Click sul Link al task**: usa `react-router` Link (Plane app router), naviga senza full reload.
+- **Utente non in workspace** (settings globale, profilo, ecc.): banner non viene mai renderizzato perche' non e' dentro `[workspaceSlug]/layout.tsx`.
+
+### File toccati
+- Nuovo: `patches/12-time-tracking/active-timer-banner.tsx`
+- Full replacement: `patches/12-time-tracking/workspace-layout.tsx` → `apps/web/app/(all)/[workspaceSlug]/layout.tsx` (solo aggiunto `<ActiveTimerBanner workspaceSlug={workspaceSlug}/>` sopra `<GlobalModals/>`)
+- `build.bat` (2 nuove copy step v1.33d)
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG → v1.33d)
+
+### Cosa NON fa in v1.33d
+- v1.33e (slice 5/5 finale): Settings page + approval workflow attivabile + report page `/timesheet/` + colonne ore su People page
+
+---
+
+## [v1.33c] - 2026-05-01 (Time Tracking MVP slice 3/5: UI sidebar issue)
+
+### Aggiunto
+- **Sostituito lo stub stock `IssueWorklogProperty`** (`apps/web/ce/components/issues/worklog/property/root.tsx` — Plane One paid, in CE ritorna `<></>`) con la nostra `<TimeTrackingSection/>`. Pattern A travestito: lo slot esiste gia' nel sidebar (detail page + peek overview) e chiama il componente con stessa signature `{workspaceSlug, projectId, issueId, disabled}`. **Niente patch ai file `sidebar.tsx` o `properties.tsx`** — il widget appare automaticamente in entrambi i contesti.
+
+### Render TimeTrackingSection
+```
+┌─ Time tracking ─────────────────────────────────────┐
+│ Logged: 2h 45m   [● 00:01:23 LIVE]                  │
+│ [+ Log time]   [▶ Start timer] / [■ Stop] [Cancel]  │
+│ • 2h 30m · Today · "fix bug"     Ciro  ✓            │
+│ • 1h 15m · Yesterday · "review"  Ciro  ⏱ ⏳         │
+│ + 3 more (timesheet page coming in v1.33e)          │
+└─────────────────────────────────────────────────────┘
+```
+
+### Frontend infra (file nuovi)
+- `services/time-log.service.ts` — CRUD + report query con totals.
+- `services/active-timer.service.ts` — get/start/stop/cancel.
+- `hooks/use-time-logs.ts` — SWR per issue + create/update/remove con optimistic update.
+- `hooks/use-active-timer.ts` — SWR con polling 5s + revalidate-on-focus.
+- `lib/format-duration.ts` — `formatDurationHM` ("2h 45m"), `formatDurationHMS` ("HH:MM:SS"), `parseDurationToSeconds` (accetta "1:30", "1h 30m", "30m", "2h").
+- `components/issues/time-tracking/manual-log-modal.tsx` — form con validazione live di duration, datetime picker, description.
+- `components/issues/time-tracking/recent-logs-list.tsx` — top 5 log con avatar, badges (timer/pending/rejected), delete-on-hover (solo owner).
+
+### Edge cases UI
+- **409 "timer gia' attivo su altro task"**: confirm modal "Fermo il timer su X e ne avvio uno nuovo qui?" → se si, fa stop+start atomicamente.
+- **Live elapsed display**: il badge "LIVE 00:01:23" si aggiorna client-side a partire da `started_at` (no polling per il display, solo per resync ogni 5s).
+- **Owner-only delete**: il bottone Trash appare solo se `current_user.id === log.user` E `approval_status in (auto, pending)`.
+- **Timer su altra issue**: badge "Timer on other task" disabilitato (no start su questa) finche' l'utente non ferma l'altro.
+
+### File toccati
+- Nuovi: `patches/12-time-tracking/time-log-service.ts`, `active-timer-service.ts`, `use-time-logs.ts`, `use-active-timer.ts`, `format-duration.ts`, `manual-log-modal.tsx`, `recent-logs-list.tsx`, `time-tracking-section.tsx`
+- `build.bat` (8 nuove copy step v1.33c + creazione cartella `components/issues/time-tracking`)
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG → v1.33c)
+
+### Cosa NON fa in v1.33c
+- v1.33d: Banner timer persistente in cima a tutte le pagine (per stop/cancel da qualsiasi schermata)
+- v1.33e: Settings page + approval workflow + report page `/timesheet/` + colonne hours su People
+
+---
+
 ## [v1.33b] - 2026-05-01 (Time Tracking MVP slice 2/5: timer start/stop)
 
 ### Aggiunto

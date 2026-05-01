@@ -38,6 +38,9 @@ from plane.app.views.base import BaseAPIView
 from plane.db.models import Issue, Project, ProjectMember, Workspace, WorkspaceMember
 from plane.db.models.time_log import TimeLog, TimeLogApprovalStatus, TimeLogSource
 
+# PATCH v1.33e: feature settings per gating approval workflow.
+from plane.db.models.workspace_feature_settings import get_workspace_feature
+
 # Import locale del serializer (vedi serializers/time_log.py installato dalla patch).
 from plane.app.serializers.time_log import TimeLogSerializer
 
@@ -129,6 +132,17 @@ class IssueTimeLogEndpoint(BaseAPIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        # PATCH v1.33e: gating approval workflow.
+        # Se il setting workspace `time_tracking_approval_required` e'
+        # ON, il log nasce 'pending' e va approvato dall'admin prima di
+        # contare nei totali approvati. Altrimenti 'auto' (immediato).
+        approval_required = get_workspace_feature(
+            workspace, "time_tracking_approval_required", False
+        )
+        initial_status = (
+            TimeLogApprovalStatus.PENDING if approval_required else TimeLogApprovalStatus.AUTO
+        )
+
         log = TimeLog.objects.create(
             workspace=workspace,
             project_id=project_id,
@@ -138,7 +152,7 @@ class IssueTimeLogEndpoint(BaseAPIView):
             logged_at=serializer.validated_data["logged_at"],
             description=serializer.validated_data.get("description"),
             source=TimeLogSource.MANUAL,
-            approval_status=TimeLogApprovalStatus.AUTO,
+            approval_status=initial_status,
         )
         return Response(TimeLogSerializer(log).data, status=status.HTTP_201_CREATED)
 
@@ -312,3 +326,75 @@ class WorkspaceTimeLogEndpoint(BaseAPIView):
 
         log.delete()  # soft delete via SoftDeleteModel
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# PATCH v1.33e: approve/reject endpoints per il workflow di approvazione.
+# Solo workspace ADMIN. Body opzionale: {reason: "..."} per reject.
+
+class TimeLogApproveEndpoint(BaseAPIView):
+    """
+    POST /workspaces/<slug>/time-logs/<id>/approve/
+    Cambia approval_status pending -> approved.
+    Solo ADMIN. Logs gia' approved/rejected/auto -> 400.
+    """
+
+    @allow_permission([ROLE.ADMIN], level="WORKSPACE")
+    def post(self, request, slug, log_id):
+        try:
+            workspace = Workspace.objects.get(slug=slug)
+        except Workspace.DoesNotExist:
+            return Response({"error": "Workspace not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            log = TimeLog.objects.get(pk=log_id, workspace=workspace)
+        except TimeLog.DoesNotExist:
+            return Response({"error": "Log not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if log.approval_status != TimeLogApprovalStatus.PENDING:
+            return Response(
+                {"error": f"Cannot approve log with status '{log.approval_status}'. Only 'pending' is approvable."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        log.approval_status = TimeLogApprovalStatus.APPROVED
+        log.approved_by = request.user
+        log.approved_at = timezone.now()
+        log.rejection_reason = None
+        log.save()
+        return Response(TimeLogSerializer(log).data, status=status.HTTP_200_OK)
+
+
+class TimeLogRejectEndpoint(BaseAPIView):
+    """
+    POST /workspaces/<slug>/time-logs/<id>/reject/  body: {reason?: str}
+    Cambia approval_status pending -> rejected.
+    Solo ADMIN. La reason e' opzionale ma fortemente consigliata
+    (l'UI dovrebbe richiederla).
+    """
+
+    @allow_permission([ROLE.ADMIN], level="WORKSPACE")
+    def post(self, request, slug, log_id):
+        try:
+            workspace = Workspace.objects.get(slug=slug)
+        except Workspace.DoesNotExist:
+            return Response({"error": "Workspace not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            log = TimeLog.objects.get(pk=log_id, workspace=workspace)
+        except TimeLog.DoesNotExist:
+            return Response({"error": "Log not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if log.approval_status != TimeLogApprovalStatus.PENDING:
+            return Response(
+                {"error": f"Cannot reject log with status '{log.approval_status}'. Only 'pending' is rejectable."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        reason = (request.data or {}).get("reason", "").strip() or None
+
+        log.approval_status = TimeLogApprovalStatus.REJECTED
+        log.approved_by = request.user  # usato anche per rejected: chi ha agito
+        log.approved_at = timezone.now()
+        log.rejection_reason = reason
+        log.save()
+        return Response(TimeLogSerializer(log).data, status=status.HTTP_200_OK)

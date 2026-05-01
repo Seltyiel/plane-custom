@@ -103,3 +103,6 @@ from .description import Description, DescriptionVersion
 from .time_log import TimeLog, TimeLogSource, TimeLogApprovalStatus
 # PATCH v1.33b: active timer model registration.
 from .active_timer import ActiveTimer
+# PATCH v1.33e: workspace feature settings (toggle table, riusabile per
+# Meeting v1.34 e altre feature future).
+from .workspace_feature_settings import WorkspaceFeatureSettings, get_workspace_feature

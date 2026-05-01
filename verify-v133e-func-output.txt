@@ -1,0 +1,21 @@
+=== plane-custom v1.33e FUNCTIONAL verify === 
+Started at 01/05/2026 19:08:46,50 
+ 
+=== Esecuzione test ORM dentro container API === 
+Test combo: workspace=oniro issue=1 user=luca.cervone@oniro.tech
+[PASS] Step 1 - combo found
+[PASS] Step 2 - cleanup pre-existing settings
+[PASS] Step 3 - get_workspace_feature returns default when no record
+[PASS] Step 4 - CREATE settings with flags
+[PASS] Step 5 - get_workspace_feature reads ON flag
+[PASS] Step 6 - merge preserves existing flags: features={'meetings_enabled': False, 'time_tracking_enabled': True, 'time_tracking_approval_required': True}
+[PASS] Step 7 - TimeLog with approval flag ON -^> 'pending'
+[PASS] Step 8 - approve pending -^> approved
+[PASS] Step 9 - status not 'pending' -^> view returns 400 (idempotenza)
+[PASS] Step 10 - reject pending -^> rejected with reason
+[PASS] Step 11 - flag OFF -^> new log status='auto'
+[PASS] Step 12 - CLEANUP test records
+
+*** TUTTI I 12 TEST PASSATI ***
+ 
+*** VERIFICA FUNZIONALE OK - v1.33e stabile *** 

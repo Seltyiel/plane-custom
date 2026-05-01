@@ -45,6 +45,8 @@ from plane.db.models.time_log import (
     TimeLogApprovalStatus,
     TimeLogSource,
 )
+# PATCH v1.33e: feature settings per gating approval anche su timer-stop.
+from plane.db.models.workspace_feature_settings import get_workspace_feature
 
 from plane.app.serializers.active_timer import ActiveTimerSerializer
 from plane.app.serializers.time_log import TimeLogSerializer
@@ -200,6 +202,17 @@ class TimerStopEndpoint(BaseAPIView):
         if description is None:
             description = timer.description
 
+        # PATCH v1.33e: gating approval workflow anche su timer-stop.
+        # Se il setting workspace `time_tracking_approval_required` e' ON,
+        # il log creato dal timer-stop nasce 'pending' come per i log
+        # manuali.
+        approval_required = get_workspace_feature(
+            workspace, "time_tracking_approval_required", False
+        )
+        initial_status = (
+            TimeLogApprovalStatus.PENDING if approval_required else TimeLogApprovalStatus.AUTO
+        )
+
         # Crea TimeLog. workspace+project copiati da issue via TimeLog.save().
         from django.db import transaction
 
@@ -214,7 +227,7 @@ class TimerStopEndpoint(BaseAPIView):
                 description=description,
                 source=TimeLogSource.TIMER,
                 timer_started_at=timer.started_at,
-                approval_status=TimeLogApprovalStatus.AUTO,
+                approval_status=initial_status,
             )
             timer.delete()
 
