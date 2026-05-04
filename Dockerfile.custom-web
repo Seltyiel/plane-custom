@@ -21,9 +21,15 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV TURBO_TELEMETRY_DISABLED=1
+# PATCH v1.34f-build: cache turbo persistente tra build.
+# Con TURBO_CACHE_DIR puntato su un cache mount BuildKit, turbo skipa
+# i task il cui input non e' cambiato. Tipico saving: 5-15min su
+# rebuild che toccano solo pochi file.
+ENV TURBO_CACHE_DIR=/turbo-cache
 
 # Build solo il frontend web
-RUN pnpm turbo run build --filter=web
+RUN --mount=type=cache,id=turbo-cache,target=/turbo-cache \
+    pnpm turbo run build --filter=web
 
 # ─── STAGE 2: Serve con nginx ─────────────────────────────────────────────────
 FROM nginx:1.27-alpine AS production

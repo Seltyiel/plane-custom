@@ -1,0 +1,34 @@
+{% load tz %}<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Meeting cancelled</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1f2937; max-width: 560px; margin: 0 auto; padding: 24px;">
+  <div style="border: 1px solid #fecaca; background: #fef2f2; border-radius: 8px; padding: 24px;">
+    <h2 style="margin: 0 0 8px 0; color: #991b1b;">Meeting annullato</h2>
+    <p style="margin: 0 0 16px 0; color: #6b7280; font-size: 14px;">Workspace: <strong>{{ workspace_name }}</strong></p>
+
+    <h3 style="margin: 0 0 8px 0; color: #111827; text-decoration: line-through;">{{ title }}</h3>
+
+    <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+      <tr>
+        <td style="padding: 8px 0; color: #6b7280; width: 120px;">Era previsto</td>
+        <td style="padding: 8px 0; color: #111827;">{{ start_at }} ({{ timezone }})</td>
+      </tr>
+      {% if reason %}
+      <tr>
+        <td style="padding: 8px 0; color: #6b7280;">Motivo</td>
+        <td style="padding: 8px 0; color: #111827;">{{ reason }}</td>
+      </tr>
+      {% endif %}
+      <tr>
+        <td style="padding: 8px 0; color: #6b7280;">Annullato da</td>
+        <td style="padding: 8px 0; color: #111827;">{{ creator_name }}</td>
+      </tr>
+    </table>
+  </div>
+
+  <p style="font-size: 12px; color: #9ca3af; text-align: center; margin-top: 16px;">Sent by Plane custom v1.34c</p>
+</body>
+</html>

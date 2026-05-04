@@ -6,6 +6,317 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.34f] - 2026-05-02 (Meetings MVP slice 6: overlay nelle Calendar view stock)
+
+### Aggiunto
+- **`MeetingsCalendarProvider` (context)** — wrappa `<CalendarChart/>` in `base-calendar-root.tsx`. Fetcha UNA VOLTA i meeting nel range del mese visibile (filtrato a `project=current` se in project context, altrimenti workspace-level). Indexa per data ISO YYYY-MM-DD via `useMemo`. Re-fetch automatico quando cambia mese.
+- **`useMeetingsForDate(date)` hook** — consumer per le day cells.
+- **`CalendarMeetingBlocks` componente** — renderizza i meeting di un giorno come chip blu compatti (icona Calendar + ora di start + titolo, distinti visivamente dagli issue card). Click apre `MeetingDetailModal` (riuso v1.34d).
+- **`issue-blocks.tsx` full-replacement** — aggiunge `<CalendarMeetingBlocks date={date}/>` dopo gli issue blocks dentro le day cells.
+- **`base-calendar-root.tsx`** — esteso v1.08 con il wrap del provider.
+
+### Privacy by design
+L'endpoint `GET /workspaces/<slug>/meetings/?from=&to=` filtra gia' lato backend per `Q(created_by) | Q(attendees__user)`. Quindi nelle Calendar view stock l'utente vede SOLO i meeting di cui e' creator o attendee. Niente leak di meeting privati ad altri membri del progetto.
+
+### Skip rule
+- Meeting cancellati (`is_cancelled=true`): non renderizzati (rimangono visibili solo nel detail modal o nel tab "Past/Cancelled" della pagina /meetings/).
+- Meeting audit-only (admin con feature flag): non renderizzati (sono metadata informativi, non meeting dell'utente).
+
+### Coverage
+Funziona automaticamente in tutte le 6 root del Calendar perche' tutte usano `BaseCalendarRoot`:
+- workspace-level (`workspace-views` calendar layout)
+- project-level (`projects/<id>/issues` calendar layout)
+- profile (`profile/<userId>/<viewId>` calendar layout)
+- cycle, module, team_view, project_view (idem)
+
+### File toccati
+- Nuovi: `patches/13-meetings/meetings-calendar-context.tsx`, `calendar-meeting-blocks.tsx`, `calendar-issue-blocks.tsx` (full-replacement)
+- Modificato: `patches/01-layouts/base-roots/base-calendar-root.tsx` (esteso v1.08 con wrap provider)
+- `build.bat`: 3 nuove copy step v1.34f + index.ts re-export aggiornato (provider + meeting blocks)
+- `patches/00-core/edition-badge.tsx`: CUSTOM_PATCH_TAG -> v1.34f
+
+### Cosa NON fa in v1.34f (in arrivo)
+- v1.34g: Settings UI per audit mode toggle + per-user reminder default in Profile
+- Toggle "Show meetings" on/off nel header Calendar (off-default per chi non vuole il clutter): rinviato, surface piccola, default ON e' ragionevole
+- Multi-day events (meeting che spannano piu' giorni): in v1.34f mostriamo solo nel giorno di start_at. Per supportare span -> renderizzare in tutti i giorni coperti, possibile estensione futura
+
+---
+
+## [v1.34e-3] - 2026-05-02 (Meetings: peek non si chiude piu' cliccando dentro modale)
+
+### Fixato
+- Aprendo `MeetingCreateModal` o `MeetingDetailModal` dal peek panel dell'issue, qualunque click dentro la modale (input, button, etc.) causava la chiusura del peek e quindi lo smontaggio della modale stessa (che e' figlia React di `IssueMeetingsProperty`).
+- Causa: il peek stock usa l'hook `usePeekOverviewOutsideClickDetector` che chiude il peek su click fuori dal suo ref. La nostra modale viene renderizzata da HeadlessUI Dialog in un portal a `document.body` — quindi DOM-fuori dal peek panel. Ogni click dentro la modale sembra "fuori" al peek.
+- Plane stock prevede gia' un escape: il hook controlla `event.target.closest("[data-prevent-outside-click]")` e, se trova l'attributo, salta la chiusura del peek.
+- **Fix**: aggiunto attributo `data-prevent-outside-click="meeting-modal"` su un wrapper interno (form per `MeetingCreateModal`, div wrapper per `MeetingDetailModal`). Niente modifica al peek stock necessaria.
+
+### File toccati
+- `patches/13-meetings/meeting-create-modal.tsx`
+- `patches/13-meetings/meeting-detail-modal.tsx`
+- `patches/00-core/edition-badge.tsx`: CUSTOM_PATCH_TAG -> v1.34e-3
+
+---
+
+## [v1.34e-2] - 2026-05-02 (Meetings: linked work items cliccabili nel detail modal)
+
+### Fixato
+- In `MeetingDetailModal` la sezione "Linked work items" aveva styling che faceva sembrare le righe cliccabili (`hover:bg-custom-background-90`) ma mancava `onClick`. Click non apriva l'item.
+- Aggiunto `useNavigate` da react-router e handler `handleOpenIssue(issueId, projectId)` che chiude il meeting modal e naviga a `/<slug>/projects/<projectId>/issues/<issueId>` (pagina full dell'issue).
+- `cursor-pointer` aggiunto esplicitamente al `<li>`.
+- Bottone X (remove link, creator only): aggiunto `e.stopPropagation()` per evitare che il click triggeri anche la navigazione.
+- Issue workspace-level (project_id null): per ora skip della navigazione. Fallback per quando avremo una pagina dedicata workspace-level issue (rinviato).
+
+### File toccati
+- `patches/13-meetings/meeting-detail-modal.tsx`
+- `patches/00-core/edition-badge.tsx`: CUSTOM_PATCH_TAG -> v1.34e-2
+
+---
+
+## [v1.34e-1] - 2026-05-02 (Meetings: sezione anche nel peek panel)
+
+### Fixato
+- **Sezione "Meetings" mancava nel peek overview panel**: in v1.34e avevo iniettato `IssueMeetingsProperty` solo in `issue-detail/sidebar.tsx` (la pagina full dell'issue, accessibile via `/projects/<id>/issues/<id>`), ma non in `peek-overview/properties.tsx` (il pannello laterale che si apre cliccando un task da una list/board/calendar view, dove l'utente passa la maggior parte del tempo).
+- Plane stock ha 2 file separati per le 2 viste, anche se il contenuto e' molto simile. Ho fatto full-replacement del peek `properties.tsx` con la stessa modifica del sidebar.tsx (1 import + 1 render).
+
+### File toccati
+- Nuovo: `patches/13-meetings/peek-overview-properties.tsx` (full-replacement del peek)
+- `build.bat`: 1 nuova copy step v1.34e-1
+- `patches/00-core/edition-badge.tsx`: CUSTOM_PATCH_TAG -> v1.34e-1
+
+---
+
+## [v1.34f-build] - 2026-05-02 (build optimization: pristine clone cache + turbo cache)
+
+### Cambiato (build only, niente runtime)
+- **`build.bat`**: ora `git clone` viene fatto UNA SOLA VOLTA. La sorgente Plane viene salvata in `%USERPROFILE%\plane-build\source-pristine\plane\` (cache pristine immutabile). Ad ogni build il working dir `%USERPROFILE%\plane-build\source\plane\` viene wipato e ripopolato copiando dalla pristine via `robocopy` (operazione locale, niente rete).
+  - **Saving stimato**: ~30-60s + ~100MB di rete per build.
+  - Per aggiornare upstream Plane: lanciare `build.bat refresh` (cancella la pristine cache e ri-clona).
+- **`Dockerfile.custom-web`**: aggiunto BuildKit cache mount per turbo. Variabile `TURBO_CACHE_DIR=/turbo-cache` + `--mount=type=cache,id=turbo-cache,target=/turbo-cache` sul `RUN pnpm turbo run build`. Risultato: turbo legge la cache dei build precedenti e skipa i task il cui input non e' cambiato.
+  - **Saving stimato**: 5-15min su rebuild che toccano solo pochi file (es. patch a un singolo .tsx).
+  - Il cache mount e' persistente tra build (BuildKit lo mantiene finche' il Docker daemon non viene ripulito).
+
+### Note
+- pnpm package store gia' era cachato (`--mount=type=cache,id=pnpm-store`) — invariato.
+- `Dockerfile.api` non e' stato toccato (build piu' rapida, pip installs gia' veloci, modifica cieca rischiosa).
+- Niente impatto runtime: l'output dei container web/api e' identico.
+
+---
+
+## [v1.34e] - 2026-05-02 (Meetings MVP slice 5: Issue ↔ Meeting integration)
+
+### Aggiunto
+- **Sezione "Meetings" nel sidebar dell'issue detail** (`apps/web/core/components/issues/issue-detail/sidebar.tsx`, full-replacement):
+  - Posizionata sotto `IssueWorklogProperty` e prima di `WorkItemAdditionalSidebarProperties`.
+  - Mostra lista compatta dei meeting linkati al task (titolo, range orario, attendee count, location truncata).
+  - Bottone "+ Schedule" -> apre `MeetingCreateModal` precompilato con `initialIssueId` + `initialProjectId`.
+  - Click su un meeting -> apre `MeetingDetailModal`.
+  - Empty state: "No meetings linked. Click 'Schedule' to add one."
+  - Filtra meeting cancellati di default (visibili solo nel detail modal).
+- **Componente `IssueMeetingsProperty`** (`patches/13-meetings/issue-meetings-property.tsx`):
+  - Stesso pattern di `IssueWorklogProperty` (v1.33c): standalone block, non wrappato in `SidebarPropertyListItem`.
+  - Riusa `useIssueMeetings(slug, issueId)` hook gia' presente in v1.34d (legge `GET /workspaces/<slug>/issues/<id>/meetings/`, gia' filtrato per visibility lato backend).
+- **`MeetingCreateModal` accetta 2 nuove props opzionali**:
+  - `initialIssueId`: se presente, dopo POST `/meetings/` chiama silently POST `/meetings/<id>/issue-links/` con `{issue_id}`. L'errore di link non blocca il flusso (meeting creato comunque, log in console).
+  - `initialProjectId`: pre-popola il dropdown project nel form (default per scheduling da task).
+
+### Privacy by design
+- L'endpoint `GET /workspaces/<slug>/issues/<id>/meetings/` (v1.34b) ritorna solo i meeting linkati di cui l'utente e' creator/attendee. Quindi un membro del progetto che apre un task vede SOLO i meeting di cui e' parte attiva — niente leak di meeting privati ad altri membri.
+
+### I 3 modi di scheduling sono ora tutti accessibili da UI
+| Modo | Come | Risultato |
+|---|---|---|
+| Per progetto (orfano) | `/meetings/` -> "+ Create meeting" -> seleziona project | `Meeting(project=X, no issue_links)` |
+| Su task singolo | apri task -> sidebar Meetings -> "+ Schedule" | `Meeting(project=task.project_id) + MeetingIssueLink(issue=task)` |
+| Slegato | `/meetings/` -> "+ Create meeting" -> "Workspace-level (no project)" | `Meeting(project=NULL, no issue_links)` |
+
+### File toccati
+- Nuovo: `patches/13-meetings/issue-meetings-property.tsx`
+- Nuovo: `patches/13-meetings/issue-detail-sidebar.tsx` (full-replacement del sidebar.tsx stock con +2 righe rispetto a stock)
+- Modificato: `patches/13-meetings/meeting-create-modal.tsx` (props `initialIssueId` + `initialProjectId` + auto-link post-create)
+- `build.bat`: 2 nuove copy step v1.34e + index.ts re-export aggiornato
+- `patches/00-core/edition-badge.tsx`: CUSTOM_PATCH_TAG -> v1.34e
+
+### Cosa NON fa in v1.34e (in arrivo)
+- v1.34f: Calendar overlay tasks/meetings/both nelle Calendar view esistenti (project + workspace), filtrato per partecipanti
+- v1.34g: Settings UI per audit mode toggle + per-user reminder default in Profile
+- (Opzionale) Activity feed entry "Meeting *titolo* scheduled / unlinked / cancelled" — rinviato perche' richiede integrazione con `IssueActivity` Celery task + serializer + frontend rendering, surface ampia per benefit limitato. Si valuta per una eventuale v1.34h.
+
+---
+
+## [v1.34d-1] - 2026-05-02 (hotfix grafico: ModalCore invece di Dialog custom)
+
+### Fixato
+- **Modal create + detail rendevano inline invece che in overlay**: il pattern `<Dialog>...<div className="fixed inset-0 bg-custom-backdrop opacity-50" />` non si attivava (probabile problema di compilazione Tailwind sulla classe `bg-custom-backdrop` o di interazione con `<Transition.Root>` in mode portal). Risultato: il contenuto del modal finiva nel flusso normale della pagina, sovrapposto alla tabella sottostante.
+- Refactor: entrambi i modal (`MeetingCreateModal`, `MeetingDetailModal`) ora usano `ModalCore` da `@plane/ui` (lo stesso componente che Plane stock usa per ogni altro modal — DeactivateAccountModal, MoveIssueModal, ecc.). `ModalCore` gestisce internamente:
+  - `<Transition.Root>` + `<Dialog as="div" className="relative z-30">`
+  - `<div className="fixed inset-0 bg-backdrop transition-opacity" />` (backdrop)
+  - `<div className="fixed inset-0 z-30 overflow-y-auto">` (wrapper centratura)
+  - `<Dialog.Panel className="bg-surface-1 ...">` (pannello con border + ombra)
+- Le props `position={EModalPosition.CENTER}` e `width={EModalWidth.XL}` (create) / `EModalWidth.XXL` (detail) tengono dimensioni e posizionamento coerenti con gli altri modal stock.
+- Input/textarea/select hanno ora classe condivisa `inputClass` con border `custom-border-200` + bg `custom-background-100` + focus border `custom-primary-100` (matching pattern stock).
+
+### File toccati
+- `patches/13-meetings/meeting-create-modal.tsx`
+- `patches/13-meetings/meeting-detail-modal.tsx`
+- `patches/00-core/edition-badge.tsx` (CUSTOM_PATCH_TAG → v1.34d-1)
+
+---
+
+## [v1.34d] - 2026-05-02 (Meetings MVP slice 4: UI page + create/edit/RSVP modals)
+
+### Aggiunto
+- **Pagina `/meetings/`** workspace-level con vista lista in tabella, ordinata per `start_at`, suddivisa in:
+  - **Upcoming** (end_at >= now AND non cancellati)
+  - **Past / Cancelled**
+  - Colonne: Title, When, Location, Attendees count, My RSVP, Organizer.
+- **Modal Create Meeting** (Headless UI Dialog) con campi: title, description, location, start_at, end_at, all_day toggle, reminder_minutes_before (default 15), project picker (escluso il workspace fittizio).
+- **Modal Detail/Edit/RSVP**:
+  - Info principali (title, when, location come link cliccabile, description, organizer, reminder).
+  - **RSVP buttons** (Accept / Tentative / Decline) per l'utente corrente se attendee, con `StatusBadge` colorata.
+  - **Attendees list**: avatar iniziali + name + email + StatusBadge. Creator ha inline form "Add attendee" (workspace member dropdown OR external email + display_name) e bottone X per rimuovere.
+  - **Issue links list**: project_identifier + sequence_id + name. Creator puo' rimuovere.
+  - Footer (creator only): "Edit" (riapre il Create modal in `mode="edit"` con valori pre-popolati) + "Cancel meeting" (conferma + `prompt` per reason).
+  - Audit-only meetings: render light (niente description/attendee details, niente edit/RSVP).
+- **Service frontend** `meeting.service.ts` con tipi co-located (`IMeeting`, `IMeetingAttendee`, `IMeetingIssueLink`, `IMeetingCreatePayload`, `IMeetingListFilters`, ecc). Metodi: `list`, `retrieve`, `create`, `update`, `cancel`, `rsvp`, `addAttendee`, `removeAttendee`, `addIssueLink`, `removeIssueLink`, `issueMeetings`.
+- **Hook SWR** `use-meetings.ts`: `useMeetings(slug, filters)` list, `useMeetingDetail(slug, id)` con nested attendees + issue_links, `useIssueMeetings(slug, issueId)`.
+
+### Decisione architetturale
+- **Tipi co-located nel service file** (non in `packages/types`) per evitare full-replacement di `packages/types/src/index.ts` (hub fragile a regressioni upstream Plane).
+- **DateTime input nativo** `<input type="datetime-local">` per l'MVP. Switcha a `<input type="date">` se `all_day=true`. Helper `dateTimeLocalToISO` / `isoToDateTimeLocal` per round-trip.
+- **State modal locale al page**: i 2 modal (create + detail) sono state-locale a `MeetingsRoot`, niente context globale. Il "Edit" interno a `MeetingDetailModal` istanzia un secondo `MeetingCreateModal` in `mode="edit"`.
+- **Sidebar entry**: estese le 4 file di v1.33f (constants-workspace.ts + sidebar-helper.tsx + sidebar-item-base.tsx + routes-core.ts) per aggiungere `meetings` con `Calendar` icon. Access include `GUEST` (un guest puo' essere invitato a un meeting).
+
+### File toccati
+- Nuovi: `patches/13-meetings/meeting-service.ts`, `use-meetings.ts`, `meetings-root.tsx`, `meeting-create-modal.tsx`, `meeting-detail-modal.tsx`, `meetings-page.tsx`, `meetings-layout.tsx`, `meetings-header.tsx`
+- Modificati (estesi v1.33f): `patches/12-time-tracking/constants-workspace.ts`, `sidebar-helper.tsx`, `sidebar-item-base.tsx`, `routes-core.ts`
+- `build.bat`: 8 nuove copy step v1.34d (4 component + 1 service + 1 hook + 3 page-files + 1 mkdir + index.ts inline)
+- `patches/00-core/edition-badge.tsx`: CUSTOM_PATCH_TAG -> v1.34d
+
+### Cosa NON fa in v1.34d (in arrivo)
+- v1.34d-2: Day/Week/Month grid view (riusa il Calendar layout esistente)
+- v1.34e: Calendar overlay tasks/meetings/both
+- v1.34f: Settings UI per audit mode toggle + per-user reminder default in Profile
+- Issue link picker (per ora la lista issue_links e' read-only nel detail; per linkare bisogna usare l'API direttamente o aspettare l'integrazione issue-detail in v1.34d-3)
+
+---
+
+## [v1.34c] - 2026-05-02 (Meetings MVP slice 3: email invite/update/cancel + Celery beat reminder)
+
+### Aggiunto
+- **4 Celery `shared_task` per email** (`plane/bgtasks/meeting_email_task.py`):
+  - `send_meeting_invite(meeting_id, attendee_id)` — invio email invito al singolo attendee, set `invitation_email_sent_at` su success. Idempotente.
+  - `send_meeting_update(meeting_id, changes_summary)` — invio update a TUTTI gli attendees interni gia' invitati. Triggerato dal PATCH endpoint solo se cambia `title|start_at|end_at|location|all_day`.
+  - `send_meeting_cancel(meeting_id, reason)` — invio cancel a TUTTI gli attendees interni gia' invitati. Triggerato dal DELETE soft-cancel.
+  - `send_meeting_reminder(meeting_id, attendee_id)` — invio reminder, set `reminder_email_sent_at`. Idempotente. Skip se status='declined'.
+- Tutti i task seguono il pattern di `magic_link_code_task.py`: `get_email_configuration()` legge `InstanceConfiguration` (god-mode SMTP) -> `get_connection()` -> `EmailMultiAlternatives` con HTML+plain text via `render_to_string()`.
+- **Reminder beat scanner** (`plane/bgtasks/meeting_reminder_beat.py`):
+  - `process_meeting_reminders(horizon_hours=24)` scansiona meeting con `start_at in (now, now+horizon]` e `cancelled_at IS NULL`.
+  - Per ogni attendee interno (skip externals + status='declined' + `reminder_email_sent_at IS NOT NULL`) calcola `rmins = attendee.reminder_minutes_before OR meeting.reminder_minutes_before OR 15`.
+  - Se `now in [start_at - rmins, start_at)` -> `send_meeting_reminder.delay()`.
+- **Migration 0128_v134c_meeting_reminder_beat.py**: registra `PeriodicTask name='meetings.process_reminders'` con `IntervalSchedule(every=1 minute)`. Plane usa `django_celery_beat.DatabaseScheduler` quindi il PeriodicTask viene letto automaticamente al prossimo tick del beat container — niente restart richiesto.
+- **HTML email templates** (`apps/api/templates/emails/meetings/`): `meeting_invite.html`, `meeting_update.html`, `meeting_cancel.html`, `meeting_reminder.html`. Inline CSS, ~560px width, palette Plane.
+- **Hook nei view endpoint** (`patches/13-meetings/meeting-view.py` esteso v1.34b -> v1.34c):
+  - `MeetingDetailEndpoint.patch`: snapshot pre-save + `_significant_change()` + `_changes_summary()` + `_safe_delay(send_meeting_update, ...)`.
+  - `MeetingDetailEndpoint.delete`: `_safe_delay(send_meeting_cancel, meeting_id, reason)`.
+  - `MeetingAttendeesEndpoint.post`: per attendee interno `_safe_delay(send_meeting_invite, meeting_id, attendee_id)`. Per esterno: NO email (v1.34c policy, ricevera' magic link in v1.35b).
+- `_safe_delay()` wrapper: swallow Celery broker errors / ImportError fallback in modo che le email non bloccano mai il flusso applicativo.
+
+### Decisione policy
+- **Solo attendees interni** (user_id IS NOT NULL) ricevono email in v1.34c. External attendees hanno gia' `rsvp_token` salvato (v1.34b) ma riceveranno la prima email solo in v1.35b quando il magic link RSVP sara' cabling-completo.
+- **Creator NON riceve invite**: e' auto-aggiunto come `accepted` al POST `/meetings/`, lo skip e' implicito perche' la create endpoint non chiama `send_meeting_invite` per il creator (l'invite parte SOLO da `MeetingAttendeesEndpoint.post`).
+
+### File toccati
+- Nuovi: `patches/13-meetings/meeting-email-task.py`, `meeting-reminder-beat.py`, `migration-0128-meeting-beat.py`, `email-meeting-invite.html`, `email-meeting-update.html`, `email-meeting-cancel.html`, `email-meeting-reminder.html`
+- Modificato: `patches/13-meetings/meeting-view.py` (import email tasks + hook in patch/delete/attendees POST)
+- `build.bat`: 8 nuove copy step v1.34c (incluso mkdir templates/emails/meetings/)
+- `patches/00-core/edition-badge.tsx`: CUSTOM_PATCH_TAG -> v1.34c
+
+### Cosa NON fa in v1.34c (in arrivo)
+- v1.34d: pagina UI `/meetings/` con vista Day/Week/Month + Modal create/edit + RSVP UI
+- v1.34e: Calendar layout overlay Tasks/Meetings/Both
+- v1.34f: Settings UI per audit mode toggle + per-user reminder default
+- v1.35b: External RSVP via magic link + email invite agli external
+
+---
+
+## [v1.34b] - 2026-05-02 (Meetings MVP slice 2: backend endpoints + RSVP + visibility)
+
+### Aggiunto
+- **6 endpoint REST** per Meeting registrati in `urls/workspace.py`:
+  - `GET /workspaces/<slug>/meetings/?from=&to=&project_id=` — list visibili (creator + attendees) ordinati per `start_at`. Esclude `cancelled_at IS NOT NULL` di default.
+  - `POST /workspaces/<slug>/meetings/` — create (auto-add creator come attendee `accepted`).
+  - `GET /workspaces/<slug>/meetings/<id>/` — detail con attendees+issue_links nested. Cancellati visibili.
+  - `PATCH /workspaces/<slug>/meetings/<id>/` — edit (creator only).
+  - `DELETE /workspaces/<slug>/meetings/<id>/` — soft-cancel (set `cancelled_at`+`cancelled_by`+`cancellation_reason`, creator only).
+  - `POST /workspaces/<slug>/meetings/<id>/rsvp/` body `{status, comment?}` — solo l'attendee corrente puo' cambiare il proprio status.
+  - `POST /workspaces/<slug>/meetings/<id>/attendees/` body `{user_id}` o `{external_email, display_name?}` — creator only. Esterni ricevono `rsvp_token` URL-safe 32-char (per magic link v1.35b).
+  - `DELETE /workspaces/<slug>/meetings/<id>/attendees/<aid>/` — creator only, non puo' rimuovere se stesso.
+  - `POST /workspaces/<slug>/meetings/<id>/issue-links/` body `{issue_id}` — creator only, valida project membership.
+  - `DELETE /workspaces/<slug>/meetings/<id>/issue-links/<lid>/` — creator only.
+  - `GET /workspaces/<slug>/issues/<id>/meetings/` — meetings linkati all'issue, filtrati per visibility.
+
+### Privacy
+- **Visibility filter**: `Meeting.objects.filter(workspace=W).filter(Q(created_by=user) | Q(attendees__user=user)).distinct()`. Solo creator + attendee interni vedono il meeting via `MeetingSerializer` full.
+- **Audit mode**: workspace ADMIN con feature flag `workspace_feature_settings.meetings_admin_audit_mode=true` vedono i meeting altrui via `MeetingLightSerializer` (solo title + start/end + attendee_count). Le entry audit-only sono marcate `is_audit_only=true` nel response.
+- **Mutazioni**: solo creator (edit/cancel/manage attendees/manage issue links). Eccezione: workspace admin "ownership transfer" se il creator e' rimosso dal workspace — non implementato in v1.34b, rinviato.
+
+### Helpers nel view file
+- `_user_is_workspace_admin(user, workspace)`, `_user_is_project_member(user, workspace, project_id)`
+- `_parse_dt(value)` — ISO-8601 -> aware datetime, supporta sia `...Z` sia `...+00:00`
+- `_gen_rsvp_token()` — `secrets.token_urlsafe(24)` (≈32 char URL-safe)
+- `_get_visible_meetings(workspace, user)`, `_get_audit_meetings(workspace)`
+
+### File toccati
+- Nuovo: `patches/13-meetings/meeting-view.py` (6 view classes ≈ 470 righe)
+- Modificato: `patches/03-backend/api-urls-workspace.py` (8 nuove path() + import)
+- `build.bat`: 1 nuova copy step v1.34b
+- `patches/00-core/edition-badge.tsx`: CUSTOM_PATCH_TAG → v1.34b
+
+### Cosa NON fa in v1.34b (in arrivo)
+- v1.34c: invio email invite/update/cancel + Celery beat task per reminder T-15min
+- v1.34d: pagina UI `/meetings/` con vista Day/Week/Month + Modal create/edit + RSVP UI
+- v1.34e: Calendar layout overlay Tasks/Meetings/Both
+- v1.34f: Settings UI per audit mode toggle + per-user reminder default
+
+---
+
+## [v1.34a] - 2026-05-02 (Meetings MVP slice 1: backend models + migration)
+
+### Aggiunto
+- **Tabella `meetings`** (migration `0127_v134a_meetings.py`):
+  - Workspace-level (project nullable). Campi: `title`, `description`, `location`, `start_at`, `end_at`, `all_day`, `timezone`.
+  - `reminder_minutes_before` (default 15, configurabile per-meeting dal creator).
+  - Campi recurrence preparati ma NON implementati: `recurrence_rule`, `recurrence_until`, `excluded_dates` (JSONField list di date), `parent_meeting` (FK self per override singola occorrenza). Verranno usati in v1.35a con RRULE expansion.
+  - Campi cancellation: `cancelled_at`, `cancelled_by` (FK User SET_NULL), `cancellation_reason`.
+  - 3 indici: `(workspace, start_at, end_at)`, `(created_by, start_at)`, `(project)`.
+  - `CheckConstraint` `end_at >= start_at`.
+- **Tabella `meeting_attendees`**:
+  - `user` XOR `external_email` (CheckConstraint). Esterni hanno `display_name` opzionale.
+  - RSVP: `status` (`invited`/`accepted`/`tentative`/`declined`), `rsvp_token` (unique, per v1.35b magic link), `rsvp_comment`, `responded_at`.
+  - Email tracking: `invitation_email_sent_at`, `reminder_email_sent_at`, `reminder_inapp_sent_at`.
+  - Per-attendee override `reminder_minutes_before` (NULL = usa default del meeting).
+  - 2 indici: `(user, meeting)` e `(meeting, status)`.
+- **Tabella `meeting_issue_links`**: M2M tra meeting e issue. `UniqueConstraint(meeting, issue)`. Indice su `issue` per il pattern "meetings linkati a questo task".
+- **Serializers** `MeetingSerializer` (full con attendees+issue_links nested), `MeetingAttendeeSerializer`, `MeetingIssueLinkSerializer`. Inoltre `MeetingLightSerializer` (solo metadata) per audit mode admin (v1.34b).
+
+### Privacy by design
+La privacy "solo invitati" e' enforced lato view (queryset filter) — vedi v1.34b. Il model non ha campi specifici, e' tutto basato su `Meeting.attendees` + `Meeting.created_by`. Workspace admin in audit mode vedono solo title+orario via `MeetingLightSerializer`.
+
+### File toccati
+- Nuovi: `patches/13-meetings/meeting-models.py`, `migration-0127-meetings.py`, `meeting-serializers.py`
+- Modificato: `patches/12-time-tracking/plane-db-models-init.py` (aggiunto import `Meeting, MeetingAttendee, MeetingIssueLink`)
+- `build.bat`: 3 nuove copy step v1.34a
+- `patches/00-core/edition-badge.tsx`: CUSTOM_PATCH_TAG → v1.34a
+
+### Cosa NON fa in v1.34a (in arrivo)
+- v1.34b: endpoint CRUD + RSVP + visibility filter + audit mode flag check
+- v1.34c: email invite/update/cancel + Celery beat reminder task
+- v1.34d: pagina UI `/meetings/` con vista Day/Week/Month
+- v1.34e: Calendar layout overlay Tasks/Meetings/Both
+- v1.34f: Settings + per-user reminder default in Profile
+
+---
+
 ## [v1.33m] - 2026-05-02 (revert filter originale People/team_issues + Subquery)
 
 ### Fixato

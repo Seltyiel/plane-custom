@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  * See the LICENSE file for details.
  *
- * PATCH (plane-custom) v1.19 + v1.33f:
+ * PATCH (plane-custom) v1.19 + v1.33f + v1.34d:
  *  - v1.19: voce sidebar "people" (Team dashboard).
  *  - v1.33f: voce sidebar "timesheet" (Time Tracking report).
+ *  - v1.34d: voce sidebar "meetings" (Meeting calendar/list).
  *
  *  labelTranslationKey su stringa letterale: i locale fallback ritorna
  *  la chiave stessa, niente bisogno di toccare i file translations.ts.
@@ -85,6 +86,8 @@ export const RESTRICTED_URLS: string[] = [
   "people",
   // PATCH v1.33f
   "timesheet",
+  // PATCH v1.34d
+  "meetings",
 ];
 
 export const ROLE = {
@@ -237,6 +240,15 @@ export const WORKSPACE_SIDEBAR_STATIC_NAVIGATION_ITEMS: Record<string, IWorkspac
     access: [EUserWorkspaceRoles.ADMIN, EUserWorkspaceRoles.MEMBER],
     highlight: (pathname: string, url: string) => pathname.includes(url),
   },
+  // PATCH v1.34d: Meetings (calendar/list).
+  // GUEST puo' vedere i meeting di cui e' attendee, quindi access include GUEST.
+  meetings: {
+    key: "meetings",
+    labelTranslationKey: "Meetings",
+    href: `/meetings/`,
+    access: [EUserWorkspaceRoles.ADMIN, EUserWorkspaceRoles.MEMBER, EUserWorkspaceRoles.GUEST],
+    highlight: (pathname: string, url: string) => pathname.includes(url),
+  },
 };
 
 export const WORKSPACE_SIDEBAR_STATIC_NAVIGATION_ITEMS_LINKS: IWorkspaceSidebarNavigationItem[] = [
@@ -248,6 +260,8 @@ export const WORKSPACE_SIDEBAR_STATIC_PINNED_NAVIGATION_ITEMS_LINKS: IWorkspaceS
   WORKSPACE_SIDEBAR_STATIC_NAVIGATION_ITEMS["people"],
   // PATCH v1.33f: Timesheet sotto People.
   WORKSPACE_SIDEBAR_STATIC_NAVIGATION_ITEMS["timesheet"],
+  // PATCH v1.34d: Meetings sotto Timesheet.
+  WORKSPACE_SIDEBAR_STATIC_NAVIGATION_ITEMS["meetings"],
 ];
 
 export const IS_FAVORITE_MENU_OPEN = "is_favorite_menu_open";

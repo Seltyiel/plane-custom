@@ -98,6 +98,15 @@ from plane.app.views.workspace.time_log import (
     TimeLogApproveEndpoint,
     TimeLogRejectEndpoint,
 )
+# PATCH v1.34b: Meeting endpoints (CRUD + RSVP + attendees + issue links + visibility).
+from plane.app.views.workspace.meeting import (
+    MeetingListCreateEndpoint,
+    MeetingDetailEndpoint,
+    MeetingRsvpEndpoint,
+    MeetingAttendeesEndpoint,
+    MeetingIssueLinksEndpoint,
+    IssueMeetingsEndpoint,
+)
 
 
 urlpatterns = [
@@ -327,6 +336,51 @@ urlpatterns = [
         "workspaces/<str:slug>/time-logs/<uuid:log_id>/reject/",
         TimeLogRejectEndpoint.as_view(),
         name="workspace-time-log-reject",
+    ),
+    # PATCH v1.34b: Meetings (CRUD + RSVP + attendees + issue links + privacy).
+    # Visibility: solo creator + attendee interni vedono il meeting.
+    # Workspace admin con feature flag `meetings_admin_audit_mode=true`
+    # vedono i meeting altrui via MeetingLightSerializer (solo metadata).
+    path(
+        "workspaces/<str:slug>/meetings/",
+        MeetingListCreateEndpoint.as_view(),
+        name="workspace-meetings",
+    ),
+    path(
+        "workspaces/<str:slug>/meetings/<uuid:meeting_id>/",
+        MeetingDetailEndpoint.as_view(),
+        name="workspace-meeting-detail",
+    ),
+    path(
+        "workspaces/<str:slug>/meetings/<uuid:meeting_id>/rsvp/",
+        MeetingRsvpEndpoint.as_view(),
+        name="workspace-meeting-rsvp",
+    ),
+    path(
+        "workspaces/<str:slug>/meetings/<uuid:meeting_id>/attendees/",
+        MeetingAttendeesEndpoint.as_view(),
+        name="workspace-meeting-attendees",
+    ),
+    path(
+        "workspaces/<str:slug>/meetings/<uuid:meeting_id>/attendees/<uuid:attendee_id>/",
+        MeetingAttendeesEndpoint.as_view(),
+        name="workspace-meeting-attendee-detail",
+    ),
+    path(
+        "workspaces/<str:slug>/meetings/<uuid:meeting_id>/issue-links/",
+        MeetingIssueLinksEndpoint.as_view(),
+        name="workspace-meeting-issue-links",
+    ),
+    path(
+        "workspaces/<str:slug>/meetings/<uuid:meeting_id>/issue-links/<uuid:link_id>/",
+        MeetingIssueLinksEndpoint.as_view(),
+        name="workspace-meeting-issue-link-detail",
+    ),
+    # GET dei meeting linkati a una specifica issue (visibili all'utente).
+    path(
+        "workspaces/<str:slug>/issues/<uuid:issue_id>/meetings/",
+        IssueMeetingsEndpoint.as_view(),
+        name="workspace-issue-meetings",
     ),
     path(
         "workspaces/<str:slug>/estimates/",

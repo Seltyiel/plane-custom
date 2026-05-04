@@ -18,9 +18,25 @@ set BUILD_ROOT=%USERPROFILE%\plane-build
 set SRC_ROOT=%BUILD_ROOT%\source
 set PLANE_SRC=%SRC_ROOT%\plane
 
+REM PATCH v1.34f-build: pristine clone cache.
+REM   Manteniamo una copia "pristine" della sorgente Plane in
+REM   %PRISTINE_SRC%. Ad ogni build copiamo da li' verso %PLANE_SRC%
+REM   (locale, veloce) invece di ri-clonare da github (rete, lento).
+REM   Per forzare il refresh upstream: passa "refresh" come argomento
+REM   (es. `build.bat refresh`) o cancella manualmente la cartella.
+set PRISTINE_DIR=%BUILD_ROOT%\source-pristine
+set PRISTINE_SRC=%PRISTINE_DIR%\plane
+
 echo Project dir (OneDrive): %PROJECT_DIR%
 echo Build area (locale):    %BUILD_ROOT%
+echo Pristine cache:         %PRISTINE_SRC%
 echo.
+
+REM Argomento "refresh" forza il re-download della sorgente.
+if /I not "%~1"=="refresh" goto :skip_refresh
+echo *** Refresh richiesto: cancello la pristine cache ***
+if exist "%PRISTINE_DIR%" rmdir /s /q "%PRISTINE_DIR%"
+:skip_refresh
 
 REM Log file in OneDrive (comodo da consultare)
 set LOG=%PROJECT_DIR%build.log
@@ -30,43 +46,45 @@ echo Press any key to start, or close this window to abort.
 pause
 
 REM -------------------------------------------------------
-REM 1. Pulisci e clona sorgente Plane (FUORI da OneDrive)
+REM 1. Pulisci sorgente locale + restore da pristine cache
+REM    (clone una volta sola, poi copia locale ad ogni build)
 REM -------------------------------------------------------
-echo [1/6] Pulizia e clone sorgente Plane in %BUILD_ROOT%... >> "%LOG%"
-echo [1/6] Pulizia e clone sorgente Plane in %BUILD_ROOT%...
+echo [1/6] Restore sorgente Plane da pristine cache... >> "%LOG%"
+echo [1/6] Restore sorgente Plane da pristine cache...
 
-if not exist "%BUILD_ROOT%" (
-    mkdir "%BUILD_ROOT%"
-    if errorlevel 1 (
-        echo ERRORE: Impossibile creare %BUILD_ROOT%.
-        pause
-        exit /b 1
-    )
-)
+if not exist "%BUILD_ROOT%" mkdir "%BUILD_ROOT%"
+if not exist "%BUILD_ROOT%" goto :err_no_build_root
 
-if exist "%SRC_ROOT%" (
-    echo     Rimozione %SRC_ROOT% precedente...
-    rmdir /s /q "%SRC_ROOT%"
-)
+REM Step 1a: se la pristine cache non esiste, clona una volta sola.
+if exist "%PRISTINE_SRC%\.git" goto :pristine_ready
 
-mkdir "%SRC_ROOT%"
-if errorlevel 1 (
-    echo ERRORE: Impossibile creare %SRC_ROOT%.
-    pause
-    exit /b 1
-)
+echo     Pristine cache assente: clone iniziale da github...
+if exist "%PRISTINE_DIR%" rmdir /s /q "%PRISTINE_DIR%"
+mkdir "%PRISTINE_DIR%"
+if not exist "%PRISTINE_DIR%" goto :err_no_pristine_dir
 
-pushd "%SRC_ROOT%"
+pushd "%PRISTINE_DIR%"
 git clone --depth=1 https://github.com/makeplane/plane.git 1>> "%LOG%" 2>&1
-if errorlevel 1 (
-    echo ERRORE: git clone fallito. Verifica git + connessione.
-    echo Controlla il log: %LOG%
-    popd
-    pause
-    exit /b 1
-)
+if errorlevel 1 goto :err_clone
 popd
-echo     OK - Sorgente clonato in %PLANE_SRC%.
+echo     OK - Pristine cache popolata in %PRISTINE_SRC%.
+goto :do_restore
+
+:pristine_ready
+echo     OK - Pristine cache presente (skip git clone).
+echo     [tip] per aggiornare upstream Plane: lancia "build.bat refresh"
+
+:do_restore
+REM Step 1b: wipe del working dir e restore da pristine.
+if exist "%SRC_ROOT%" rmdir /s /q "%SRC_ROOT%"
+mkdir "%SRC_ROOT%"
+if not exist "%SRC_ROOT%" goto :err_no_src_root
+
+echo     Copia pristine -^> working dir...
+robocopy "%PRISTINE_SRC%" "%PLANE_SRC%" /E /NFL /NDL /NJH /NJS /NC /NS /NP >nul
+REM Robocopy exit code 0-7 = ok, 8+ = error.
+if errorlevel 8 goto :err_robocopy
+echo     OK - Working dir pronta in %PLANE_SRC%.
 
 if not exist "%PLANE_SRC%\apps\web\core\components\profile\profile-issues.tsx" (
     echo ERRORE: Struttura sorgente non trovata dopo il clone.
@@ -237,6 +255,121 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\12-time-tracking\migration-0126-feature-settings.py" "%PLANE_SRC%\apps\api\plane\db\migrations\0126_v133e_feature_settings.py" >nul
 if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\12-time-tracking\workspace-feature-settings-view.py" "%PLANE_SRC%\apps\api\plane\app\views\workspace\workspace_feature_settings.py" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.34a: backend Meeting MVP - models + migration + serializer.
+REM   Tabelle nuove: meetings, meeting_attendees, meeting_issue_links.
+REM   Migration 0127. Niente endpoints in v1.34a (vanno in v1.34b).
+REM   Recurrence fields preparati ma non implementati (v1.35).
+copy /Y "%PATCHES_DIR%\13-meetings\meeting-models.py" "%PLANE_SRC%\apps\api\plane\db\models\meeting.py" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\migration-0127-meetings.py" "%PLANE_SRC%\apps\api\plane\db\migrations\0127_v134a_meetings.py" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\meeting-serializers.py" "%PLANE_SRC%\apps\api\plane\app\serializers\meeting.py" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.34b + v1.34c: backend Meeting endpoints + visibility filter + audit mode + email hooks.
+REM   Endpoint REST: list/create + detail (GET/PATCH/DELETE) + RSVP + attendees
+REM   + issue-links + GET issue's meetings.
+REM   Privacy: solo creator + attendee interni; admin audit mode via flag.
+REM   Mutazioni: solo creator (eccezione admin audit transfer in v1.35).
+REM   URLs registrate in api-urls-workspace.py (full replacement piu' giu').
+REM   v1.34c: il view file ora chiama send_meeting_invite/update/cancel post-mutation.
+copy /Y "%PATCHES_DIR%\13-meetings\meeting-view.py" "%PLANE_SRC%\apps\api\plane\app\views\workspace\meeting.py" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.34c: backend email tasks + reminder beat + templates + migration.
+REM   Celery shared_tasks: invite/update/cancel/reminder. Pattern stesso di
+REM   magic_link_code_task (get_email_configuration -> SMTP backend).
+REM   Reminder beat: ogni minuto via PeriodicTask + DatabaseScheduler.
+REM   Solo attendees interni (user_id IS NOT NULL) ricevono email in v1.34c;
+REM   external avranno magic link RSVP in v1.35b.
+copy /Y "%PATCHES_DIR%\13-meetings\meeting-email-task.py" "%PLANE_SRC%\apps\api\plane\bgtasks\meeting_email_task.py" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\meeting-reminder-beat.py" "%PLANE_SRC%\apps\api\plane\bgtasks\meeting_reminder_beat.py" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\migration-0128-meeting-beat.py" "%PLANE_SRC%\apps\api\plane\db\migrations\0128_v134c_meeting_reminder_beat.py" >nul
+if errorlevel 1 goto :patcherr
+
+REM Templates email (cartella nuova, additiva).
+if not exist "%PLANE_SRC%\apps\api\templates\emails\meetings" (
+    mkdir "%PLANE_SRC%\apps\api\templates\emails\meetings"
+)
+copy /Y "%PATCHES_DIR%\13-meetings\email-meeting-invite.html" "%PLANE_SRC%\apps\api\templates\emails\meetings\meeting_invite.html" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\email-meeting-update.html" "%PLANE_SRC%\apps\api\templates\emails\meetings\meeting_update.html" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\email-meeting-cancel.html" "%PLANE_SRC%\apps\api\templates\emails\meetings\meeting_cancel.html" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\email-meeting-reminder.html" "%PLANE_SRC%\apps\api\templates\emails\meetings\meeting_reminder.html" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.34d: UI Meetings page (list view) + Create modal + Detail/Edit/RSVP modal.
+REM   Backend (v1.34a/b/c) gia' pronto. Qui aggiungiamo:
+REM   - service frontend (meeting.service.ts) con tipi co-located
+REM   - hook SWR (use-meetings.ts: list + detail + issue's meetings)
+REM   - components/meetings/ (root + create-modal + detail-modal + index)
+REM   - app route /meetings/ (page + layout + header)
+REM   - sidebar entry "meetings" (estesi v1.33f sidebar files)
+REM   - routes-core (estesa v1.33f) registra la route
+copy /Y "%PATCHES_DIR%\13-meetings\meeting-service.ts" "%PLANE_SRC%\apps\web\core\services\meeting.service.ts" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\use-meetings.ts" "%PLANE_SRC%\apps\web\core\hooks\use-meetings.ts" >nul
+if errorlevel 1 goto :patcherr
+
+REM components/meetings/ (cartella nuova additiva)
+if not exist "%PLANE_SRC%\apps\web\core\components\meetings" (
+    mkdir "%PLANE_SRC%\apps\web\core\components\meetings"
+)
+copy /Y "%PATCHES_DIR%\13-meetings\meetings-root.tsx" "%PLANE_SRC%\apps\web\core\components\meetings\root.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\meeting-create-modal.tsx" "%PLANE_SRC%\apps\web\core\components\meetings\create-modal.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\meeting-detail-modal.tsx" "%PLANE_SRC%\apps\web\core\components\meetings\detail-modal.tsx" >nul
+if errorlevel 1 goto :patcherr
+REM PATCH v1.34e: sezione Meetings nel sidebar issue detail (custom).
+copy /Y "%PATCHES_DIR%\13-meetings\issue-meetings-property.tsx" "%PLANE_SRC%\apps\web\core\components\meetings\issue-meetings-property.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+> "%PLANE_SRC%\apps\web\core\components\meetings\index.ts" echo export * from "./root";
+>> "%PLANE_SRC%\apps\web\core\components\meetings\index.ts" echo export * from "./create-modal";
+>> "%PLANE_SRC%\apps\web\core\components\meetings\index.ts" echo export * from "./detail-modal";
+>> "%PLANE_SRC%\apps\web\core\components\meetings\index.ts" echo export * from "./issue-meetings-property";
+>> "%PLANE_SRC%\apps\web\core\components\meetings\index.ts" echo export * from "./meetings-calendar-context";
+>> "%PLANE_SRC%\apps\web\core\components\meetings\index.ts" echo export * from "./calendar-meeting-blocks";
+
+REM PATCH v1.34e: full-replacement sidebar.tsx per iniettare IssueMeetingsProperty.
+copy /Y "%PATCHES_DIR%\13-meetings\issue-detail-sidebar.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-detail\sidebar.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.34e-1: full-replacement peek-overview/properties.tsx per
+REM iniettare IssueMeetingsProperty anche nel peek panel (quello che si apre
+REM cliccando un task da una list/board/calendar view).
+copy /Y "%PATCHES_DIR%\13-meetings\peek-overview-properties.tsx" "%PLANE_SRC%\apps\web\core\components\issues\peek-overview\properties.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM PATCH v1.34f: Calendar overlay - meetings nelle Calendar view stock.
+REM   - meetings-calendar-context.tsx: provider+hook per fetchare 1 volta i
+REM     meeting del range mese visibile e indexarli per giorno.
+REM   - calendar-meeting-blocks.tsx: render dei meeting blocks per data.
+REM   - calendar-issue-blocks.tsx: full-replacement di issue-blocks.tsx
+REM     stock per renderizzare i meeting accanto agli issue.
+REM   Il wrap del provider in base-calendar-root.tsx (gia' patchato in v1.08)
+REM   e' applicato nella copy step esistente piu' giu'.
+copy /Y "%PATCHES_DIR%\13-meetings\meetings-calendar-context.tsx" "%PLANE_SRC%\apps\web\core\components\meetings\meetings-calendar-context.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\calendar-meeting-blocks.tsx" "%PLANE_SRC%\apps\web\core\components\meetings\calendar-meeting-blocks.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\calendar-issue-blocks.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\calendar\issue-blocks.tsx" >nul
+if errorlevel 1 goto :patcherr
+
+REM Pagina (cartella nuova additiva).
+mkdir "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\meetings" 2>nul
+copy /Y "%PATCHES_DIR%\13-meetings\meetings-page.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\meetings\page.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\meetings-layout.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\meetings\layout.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\meetings-header.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(projects)\meetings\header.tsx" >nul
 if errorlevel 1 goto :patcherr
 
 REM PATCH v1.33f: UI Settings + Report page Time Tracking + sidebar entries.
@@ -805,5 +938,37 @@ exit /b 0
 echo.
 echo ERRORE durante l'applicazione delle patch.
 echo Controlla il log: %LOG%
+pause
+exit /b 1
+
+:err_no_build_root
+echo.
+echo ERRORE: Impossibile creare %BUILD_ROOT%.
+pause
+exit /b 1
+
+:err_no_pristine_dir
+echo.
+echo ERRORE: Impossibile creare %PRISTINE_DIR%.
+pause
+exit /b 1
+
+:err_clone
+popd
+echo.
+echo ERRORE: git clone fallito. Verifica git + connessione.
+echo Controlla il log: %LOG%
+pause
+exit /b 1
+
+:err_no_src_root
+echo.
+echo ERRORE: Impossibile creare %SRC_ROOT%.
+pause
+exit /b 1
+
+:err_robocopy
+echo.
+echo ERRORE: copia pristine -^> working dir fallita.
 pause
 exit /b 1

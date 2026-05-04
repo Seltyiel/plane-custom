@@ -1,0 +1,23 @@
+=== plane-custom v1.34a FUNCTIONAL verify === 
+Started at 02/05/2026  1:44:18,24 
+ 
+=== Esecuzione test ORM dentro container API === 
+Test combo: workspace=oniro project=BOLO issue=1 user=luca.cervone@oniro.tech
+[PASS] Step 1 - combo found
+[PASS] Step 2 - models importabili (Meeting/Attendee/IssueLink): Meeting.db_table=meetings
+[PASS] Step 3 - CREATE Meeting: id=3633889a-ce2d-49f9-8950-d16f21a46755
+[PASS] Step 4 - CheckConstraint end_at^>=start_at: IntegrityError as expected
+[PASS] Step 5 - CREATE MeetingAttendee internal (user)
+[PASS] Step 6 - CREATE MeetingAttendee external (email)
+[PASS] Step 7 - CheckConstraint user XOR email (both set rejected): IntegrityError as expected
+[PASS] Step 8 - CheckConstraint user XOR email (neither set rejected): IntegrityError as expected
+[PASS] Step 9 - CREATE MeetingIssueLink
+[PASS] Step 10 - UniqueConstraint meeting+issue (duplicate rejected): IntegrityError as expected
+[PASS] Step 11 - MeetingSerializer expone tutti i campi attesi: all keys present
+[PASS] Step 12 - serializer nested attendees count=2: count=2
+[PASS] Step 13 - cancellation fields work
+[PASS] Step 14 - CLEANUP test records
+
+*** TUTTI I 14 TEST PASSATI ***
+ 
+*** VERIFICA FUNZIONALE OK - v1.34a stabile *** 

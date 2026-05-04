@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  * See the LICENSE file for details.
  *
- * PATCH (plane-custom) v1.19 + v1.33f:
+ * PATCH (plane-custom) v1.19 + v1.33f + v1.34d:
  *  - v1.19: voce sidebar "people" -> Users icon
  *  - v1.33f: voce sidebar "timesheet" -> Clock icon
+ *  - v1.34d: voce sidebar "meetings" -> Calendar icon
  */
 
-import { Clock, Users } from "lucide-react";
+import { Calendar, Clock, Users } from "lucide-react";
 import {
   AnalyticsIcon,
   ArchiveIcon,
@@ -51,5 +52,8 @@ export const getSidebarNavigationItemIcon = (key: string, className: string = ""
     // PATCH v1.33f
     case "timesheet":
       return <Clock className={cn("size-4 flex-shrink-0", className)} />;
+    // PATCH v1.34d
+    case "meetings":
+      return <Calendar className={cn("size-4 flex-shrink-0", className)} />;
   }
 };

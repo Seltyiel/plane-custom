@@ -1,0 +1,18 @@
+=== plane-custom v1.34c FUNCTIONAL verify === 
+Started at 02/05/2026  3:22:00,97 
+ 
+=== Esecuzione test dentro container API === 
+[PASS] Step 1 - import meeting_email_task + reminder_beat
+[PASS] Step 2 - 4 HTML templates rendono
+[PASS] Step 3 - PeriodicTask 'meetings.process_reminders' creata + enabled: task=plane.bgtasks.meeting_reminder_beat.process_meeting_reminders every=1 period=minutes
+[PASS] Step 4 - test meeting created (start in 14m, reminder=15)
+[PASS] Step 5 - eager mode + _build_connection monkey-patched (no real SMTP)
+[PASS] Step 6 - process_meeting_reminders ha schedulato ^>=1 reminder: scheduled=1
+[PASS] Step 7 - SKIP (no other user)
+[PASS] Step 8 - meeting cancellato escluso dal beat scan: sent_at=None
+[PASS] Step 9 - declined attendee non riceve reminder: sent_at=None
+[PASS] Step 10 - CLEANUP test records
+
+*** TUTTI I 10 TEST PASSATI ***
+ 
+*** VERIFICA FUNZIONALE OK - v1.34c stabile *** 

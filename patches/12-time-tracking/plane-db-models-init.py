@@ -106,3 +106,5 @@ from .active_timer import ActiveTimer
 # PATCH v1.33e: workspace feature settings (toggle table, riusabile per
 # Meeting v1.34 e altre feature future).
 from .workspace_feature_settings import WorkspaceFeatureSettings, get_workspace_feature
+# PATCH v1.34a: Meeting + MeetingAttendee + MeetingIssueLink models.
+from .meeting import Meeting, MeetingAttendee, MeetingIssueLink

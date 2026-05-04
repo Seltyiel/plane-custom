@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  * See the LICENSE file for details.
  *
- * PATCH (plane-custom) v1.19 + v1.33f:
+ * PATCH (plane-custom) v1.19 + v1.33f + v1.34d:
  *  Aggiunti staticItems:
  *   - v1.19: "people"
  *   - v1.33f: "timesheet"
+ *   - v1.34d: "meetings"
  *
  *  Senza queste entry SidebarItemBase ritorna null perche' la voce non e'
  *  nei staticItems hardcoded e isWorkspaceItemPinned ritorna false (chiavi
@@ -63,6 +64,8 @@ export const SidebarItemBase = observer(function SidebarItemBase({
     "people",
     // PATCH v1.33f
     "timesheet",
+    // PATCH v1.34d
+    "meetings",
     ...(additionalStaticItems || []),
   ];
   const slug = workspaceSlug?.toString() || "";

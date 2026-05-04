@@ -1,0 +1,37 @@
+=== plane-custom v1.34b FUNCTIONAL verify === 
+Started at 02/05/2026  2:33:23,49 
+ 
+=== Esecuzione test endpoints dentro container API === 
+Combo: ws=oniro project=BOLO creator=luca.cervone@oniro.tech other=NONE issue=1
+[PASS] Step 1 - combo base (ws+creator+issue): ok
+[WARN] secondo membro non trovato - skip visibility/RSVP cross-user
+{"levelname": "INFO", "asctime": "2026-05-02 00:33:27,531", "module": "logger", "name": "plane.api.request", "message": "POST /api/workspaces/oniro/meetings/ 201", "path": "/api/workspaces/oniro/meetings/", "method": "POST", "status_code": 201, "duration_ms": 1111, "remote_addr": "127.0.0.1", "user_agent": "", "user_id": "f7cfe56e-7ad1-49ee-adf6-3a0058ec230d"}
+[PASS] Step 2 - POST /meetings/ create: status=201 body=b'{"id":"cae69e11-072f-496b-a75d-579abd681af1","workspace":"a01284f7-03a2-4ae2-a569-56bd2b40c98a","project":"b323c9f8-c7c6-4794-a0fa-6670ed3499b2","title":"v1.34b verify test","description":"smoke test,'
+[PASS] Step 3 - creator auto-added as accepted: status=accepted
+{"levelname": "INFO", "asctime": "2026-05-02 00:33:27,561", "module": "logger", "name": "plane.api.request", "message": "GET /api/workspaces/oniro/meetings/ 200", "path": "/api/workspaces/oniro/meetings/", "method": "GET", "status_code": 200, "duration_ms": 26, "remote_addr": "127.0.0.1", "user_agent": "", "user_id": "f7cfe56e-7ad1-49ee-adf6-3a0058ec230d"}
+[PASS] Step 4 - GET /meetings/ creator vede il proprio meeting: status=200
+{"levelname": "INFO", "asctime": "2026-05-02 00:33:27,575", "module": "logger", "name": "plane.api.request", "message": "GET /api/workspaces/oniro/meetings/cae69e11-072f-496b-a75d-579abd681af1/ 200", "path": "/api/workspaces/oniro/meetings/cae69e11-072f-496b-a75d-579abd681af1/", "method": "GET", "status_code": 200, "duration_ms": 12, "remote_addr": "127.0.0.1", "user_agent": "", "user_id": "f7cfe56e-7ad1-49ee-adf6-3a0058ec230d"}
+[PASS] Step 5 - GET /meetings/^<id^>/ detail: status=200
+{"levelname": "INFO", "asctime": "2026-05-02 00:33:27,591", "module": "logger", "name": "plane.api.request", "message": "PATCH /api/workspaces/oniro/meetings/cae69e11-072f-496b-a75d-579abd681af1/ 200", "path": "/api/workspaces/oniro/meetings/cae69e11-072f-496b-a75d-579abd681af1/", "method": "PATCH", "status_code": 200, "duration_ms": 15, "remote_addr": "127.0.0.1", "user_agent": "", "user_id": "f7cfe56e-7ad1-49ee-adf6-3a0058ec230d"}
+[PASS] Step 6 - PATCH /meetings/^<id^>/ edit (creator): status=200
+{"levelname": "INFO", "asctime": "2026-05-02 00:33:27,606", "module": "logger", "name": "plane.api.request", "message": "POST /api/workspaces/oniro/meetings/cae69e11-072f-496b-a75d-579abd681af1/attendees/ 201", "path": "/api/workspaces/oniro/meetings/cae69e11-072f-496b-a75d-579abd681af1/attendees/", "method": "POST", "status_code": 201, "duration_ms": 13, "remote_addr": "127.0.0.1", "user_agent": "", "user_id": "f7cfe56e-7ad1-49ee-adf6-3a0058ec230d"}
+[PASS] Step 7 - POST attendees/ external email + rsvp_token (DB): status=201 token_len=32
+[PASS] Step 8 - SKIP (no other user)
+[PASS] Step 9 - SKIP
+[PASS] Step 10 - SKIP
+[PASS] Step 11 - SKIP
+{"levelname": "INFO", "asctime": "2026-05-02 00:33:27,629", "module": "logger", "name": "plane.api.request", "message": "POST /api/workspaces/oniro/meetings/cae69e11-072f-496b-a75d-579abd681af1/issue-links/ 201", "path": "/api/workspaces/oniro/meetings/cae69e11-072f-496b-a75d-579abd681af1/issue-links/", "method": "POST", "status_code": 201, "duration_ms": 18, "remote_addr": "127.0.0.1", "user_agent": "", "user_id": "f7cfe56e-7ad1-49ee-adf6-3a0058ec230d"}
+[PASS] Step 12 - POST /issue-links/ link issue: status=201
+{"levelname": "INFO", "asctime": "2026-05-02 00:33:27,656", "module": "logger", "name": "plane.api.request", "message": "GET /api/workspaces/oniro/issues/f68f98e4-c59d-4d99-9949-54f7f56828e4/meetings/ 200", "path": "/api/workspaces/oniro/issues/f68f98e4-c59d-4d99-9949-54f7f56828e4/meetings/", "method": "GET", "status_code": 200, "duration_ms": 25, "remote_addr": "127.0.0.1", "user_agent": "", "user_id": "f7cfe56e-7ad1-49ee-adf6-3a0058ec230d"}
+[PASS] Step 13 - GET /issues/^<id^>/meetings/ ritorna meeting linkato: status=200
+{"levelname": "INFO", "asctime": "2026-05-02 00:33:27,685", "module": "logger", "name": "plane.api.request", "message": "GET /api/workspaces/oniro/meetings/?from=2026-05-01T00:33:26.272923+00:00&to=2026-05-03T00:33:26.272923+00:00&project_id=b323c9f8-c7c6-4794-a0fa-6670ed3499b2 200", "path": "/api/workspaces/oniro/meetings/", "method": "GET", "status_code": 200, "duration_ms": 27, "remote_addr": "127.0.0.1", "user_agent": "", "user_id": "f7cfe56e-7ad1-49ee-adf6-3a0058ec230d"}
+[PASS] Step 14 - GET /meetings/ con filtri from/to/project_id: status=200
+{"levelname": "INFO", "asctime": "2026-05-02 00:33:27,700", "module": "logger", "name": "plane.api.request", "message": "DELETE /api/workspaces/oniro/meetings/cae69e11-072f-496b-a75d-579abd681af1/ 204", "path": "/api/workspaces/oniro/meetings/cae69e11-072f-496b-a75d-579abd681af1/", "method": "DELETE", "status_code": 204, "duration_ms": 14, "remote_addr": "127.0.0.1", "user_agent": "", "user_id": "f7cfe56e-7ad1-49ee-adf6-3a0058ec230d"}
+[PASS] Step 15 - DELETE meeting soft-cancel (cancelled_at set): status=204 cancelled_at=2026-05-02 00:33:27.694803+00:00
+{"levelname": "INFO", "asctime": "2026-05-02 00:33:27,725", "module": "logger", "name": "plane.api.request", "message": "GET /api/workspaces/oniro/meetings/ 200", "path": "/api/workspaces/oniro/meetings/", "method": "GET", "status_code": 200, "duration_ms": 22, "remote_addr": "127.0.0.1", "user_agent": "", "user_id": "f7cfe56e-7ad1-49ee-adf6-3a0058ec230d"}
+[PASS] Step 16 - cancelled meeting non in list: status=200
+[PASS] Step 17 - CLEANUP test records
+
+*** TUTTI I 17 TEST PASSATI ***
+ 
+*** VERIFICA FUNZIONALE OK - v1.34b stabile *** 

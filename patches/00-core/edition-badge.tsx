@@ -21,6 +21,163 @@ import { Button } from "@plane/propel/button";
 // feature delle versioni precedenti il quick-add inline funziona ora anche
 // in Workspace Views, Your Work, Calendar workspace.
 //
+// v1.34f: Calendar overlay - meeting visibili nelle Calendar view stock.
+//   - MeetingsCalendarProvider (context): wrap di <CalendarChart/> in
+//     base-calendar-root.tsx. Fetcha UNA VOLTA i meeting nel range mese
+//     visibile (workspace-level se NO project context, altrimenti
+//     project=current). Indexa per data ISO YYYY-MM-DD.
+//   - useMeetingsForDate(date): hook consumer per le day cells.
+//   - CalendarMeetingBlocks: componente che renderizza i meeting di un
+//     giorno (chip blu compatti con icona Calendar + ora + titolo).
+//     Click -> apre MeetingDetailModal (riuso v1.34d).
+//   - issue-blocks.tsx (full-replacement): aggiunge <CalendarMeetingBlocks
+//     date={date}/> dopo gli issue blocks.
+//
+//   Privacy: l'endpoint backend GET /workspaces/<slug>/meetings/?from=&to=
+//   filtra gia' per Q(created_by) | Q(attendees__user). Quindi le Calendar
+//   view mostrano SOLO i meeting di cui l'utente fa parte (richiesta:
+//   "comparissero queste attivita' nelle view calendar gia' esistenti, ma
+//   solo per i partecipanti").
+//
+//   Skip: meeting cancellati + meeting audit-only (admin con feature flag)
+//   non sono renderizzati nelle Calendar view per evitare clutter.
+//
+//   Funziona automaticamente in tutte le 6 root del Calendar (workspace,
+//   project, profile, cycle, module, team_view) perche' tutte usano
+//   BaseCalendarRoot come implementazione comune.
+//
+// v1.34e: Issue ↔ Meeting integration.
+//   - Sezione "Meetings" nel sidebar dell'issue detail (sotto Worklog,
+//     prima delle Additional properties): lista compatta dei meeting
+//     linkati al task (titolo, when, attendee count, location), pulsante
+//     "+ Schedule" che apre MeetingCreateModal precompilato con
+//     project=issue.project_id e auto-link al task post-create.
+//   - MeetingCreateModal accetta initialIssueId + initialProjectId.
+//     Dopo POST /meetings/, se initialIssueId, chiama silently
+//     POST /meetings/<id>/issue-links/ con {issue_id}. L'errore di link
+//     non blocca il flusso (meeting creato comunque).
+//   - useIssueMeetings hook (gia' presente in v1.34d) chiama
+//     GET /workspaces/<slug>/issues/<id>/meetings/ filtrato per
+//     visibility (creator+attendee). Quindi un guest che apre un task
+//     vede SOLO i meeting linkati di cui e' attendee.
+//   - Click su un meeting nella sezione -> apre MeetingDetailModal con
+//     attendees + RSVP buttons + edit + cancel (se creator).
+//
+//   Architettura: sidebar.tsx full-replacement aggiunge 1 import +
+//   1 render JSX di <IssueMeetingsProperty/> accanto a <IssueWorklogProperty/>.
+//   Pattern identico a v1.33c (worklog).
+//
+//   I 3 modi di scheduling Meeting sono ora tutti accessibili da UI:
+//    1. Per progetto: dalla pagina /meetings/ scegli un project nel form
+//    2. Da task singolo: dalla sidebar del task -> "+ Schedule" (auto-link)
+//    3. Slegato: dalla pagina /meetings/ lascia "Workspace-level (no project)"
+//
+// v1.34d: Meetings UI - pagina /meetings/, modal create/edit, RSVP UI.
+//   - Service frontend: meeting.service.ts con tipi co-located (CRUD +
+//     RSVP + attendees + issue-links + GET issue's meetings).
+//   - Hook SWR: useMeetings(slug) list, useMeetingDetail(slug, id) detail
+//     nested, useIssueMeetings(slug, issueId).
+//   - Sidebar entry "meetings" (Calendar icon, GUEST+MEMBER+ADMIN access).
+//     Estesi v1.33f files (constants-workspace, sidebar-helper, sidebar-
+//     item-base, routes-core).
+//   - Pagina /meetings/ con table list ordinata per start_at, suddivisa
+//     in Upcoming + Past/Cancelled. Mostra title, when, location,
+//     attendee count, my RSVP, organizer.
+//   - Modal Create (Headless UI Dialog): title, description, location,
+//     start/end (datetime-local), all_day toggle (switcha a date input),
+//     reminder_minutes_before, project picker (workspace project escluso).
+//   - Modal Detail/Edit/RSVP (Headless UI Dialog):
+//     - sezione info (title, when, location link, description, organizer)
+//     - sezione RSVP buttons (Accept/Tentative/Decline) per current user
+//       se attendee
+//     - sezione Attendees con StatusBadge + (creator) inline form Add/
+//       Remove (workspace member dropdown OR external email)
+//     - sezione Issue links (creator only remove)
+//     - footer: Edit + Cancel meeting (creator only). Edit apre lo stesso
+//       Create modal in mode="edit"
+//   - Audit-only meetings (admin con feature flag): mostrati in light mode
+//     (no description/attendee names), no edit/RSVP UI.
+//
+// v1.34c: Meeting email notifications + Celery reminder beat.
+//   - 4 Celery shared_tasks (plane.bgtasks.meeting_email_task):
+//     send_meeting_invite, send_meeting_update, send_meeting_cancel,
+//     send_meeting_reminder. Pattern identico a magic_link_code_task:
+//     get_email_configuration() -> InstanceConfiguration (god-mode SMTP)
+//     -> EmailMultiAlternatives con template HTML render_to_string.
+//   - Beat scanner ogni minuto (plane.bgtasks.meeting_reminder_beat.
+//     process_meeting_reminders) registrato come PeriodicTask via
+//     migration 0128. Plane usa django_celery_beat.DatabaseScheduler
+//     quindi legge da PeriodicTask, no edit di celery.py.
+//   - Reminder lookup: per ogni meeting upcoming (start_at in [now, +24h]
+//     non cancellato), per ogni attendee interno: rmins = attendee.
+//     reminder_minutes_before OR meeting.reminder_minutes_before OR 15.
+//     send_at = start_at - rmins. Se now in [send_at, start_at) AND
+//     reminder_email_sent_at IS NULL AND status != 'declined' -> dispatch.
+//   - Idempotenza: ogni task setta il proprio sent_at su success.
+//     Anti-double-fire reggono i restart del beat.
+//   - Hook in meeting-view.py: post-create attendee POST -> invite,
+//     post-PATCH se cambia title/start/end/location/all_day -> update,
+//     post-DELETE soft-cancel -> cancel. _safe_delay() swallow Celery
+//     broker errors per non rompere il path applicativo.
+//   - Templates HTML in apps/api/templates/emails/meetings/:
+//     meeting_invite.html, meeting_update.html, meeting_cancel.html,
+//     meeting_reminder.html. Plain-text fallback inline nei task.
+//   - External attendees (user_id IS NULL): rsvp_token salvato ma
+//     NESSUNA email inviata in v1.34c (rinviato a v1.35b magic link).
+//   - SMTP gia' configurato a livello istanza (oniro.tech port 465 SSL,
+//     setup via god-mode UI).
+//
+// v1.34b: backend Meeting endpoints - CRUD + RSVP + visibility + audit mode.
+//   Endpoint REST registrati in urls/workspace.py:
+//    - GET    /workspaces/<slug>/meetings/?from=&to=&project_id=
+//    - POST   /workspaces/<slug>/meetings/  (auto-add creator come attendee)
+//    - GET    /workspaces/<slug>/meetings/<id>/
+//    - PATCH  /workspaces/<slug>/meetings/<id>/  (creator only)
+//    - DELETE /workspaces/<slug>/meetings/<id>/  (soft-cancel, creator only)
+//    - POST   /workspaces/<slug>/meetings/<id>/rsvp/  (attendee only)
+//    - POST   /workspaces/<slug>/meetings/<id>/attendees/   (creator only)
+//    - DELETE /workspaces/<slug>/meetings/<id>/attendees/<aid>/
+//    - POST   /workspaces/<slug>/meetings/<id>/issue-links/ (creator only)
+//    - DELETE /workspaces/<slug>/meetings/<id>/issue-links/<lid>/
+//    - GET    /workspaces/<slug>/issues/<id>/meetings/  (visible meetings)
+//
+//   Privacy ("solo invitati") enforced lato view via Q(created_by) | Q(attendees__user).
+//   .distinct() per evitare duplicate dalla JOIN M2M.
+//
+//   Audit mode: workspace ADMIN con flag meetings_admin_audit_mode=true
+//   vedono i meeting di cui non sono attendee via MeetingLightSerializer
+//   (solo title/start/end/attendee_count, no description/attendee names).
+//
+//   Mutazioni: solo creator. RSVP: solo l'attendee corrente. External
+//   invitees: rsvp_token generato (URL-safe 32char) per magic link
+//   v1.35b. Email NON inviate ancora (arrivano in v1.34c con celery).
+//
+//   Niente UI in v1.34b: arriva in v1.34d con la pagina /meetings/ e
+//   il modal create/edit, e in v1.34e con l'overlay calendar.
+//
+// v1.34a: backend Meeting MVP slice 1 - models + migration + serializers.
+//   Tabelle nuove (migration 0127):
+//    - meetings: appuntamenti workspace-level (project nullable opzionale).
+//      Campi base (title/description/location/start/end/all_day/timezone)
+//      + reminder_minutes_before (default 15, configurabile per meeting).
+//      Campi recurrence (recurrence_rule/until/excluded_dates/parent_meeting)
+//      preparati ma NON implementati: arrivano in v1.35a (RRULE expansion).
+//      Campi cancellation (cancelled_at/by/reason).
+//      Indices: (workspace, start_at, end_at) + (created_by, start_at) + (project).
+//      CheckConstraint: end_at >= start_at.
+//    - meeting_attendees: lista invitati. user XOR external_email
+//      (CheckConstraint). RSVP status (invited/accepted/tentative/declined),
+//      rsvp_token (unique, per v1.35b magic link), rsvp_comment, responded_at.
+//      Email tracking (invitation/reminder_email/reminder_inapp). Per-attendee
+//      reminder_minutes_before override (NULL = usa meeting default).
+//    - meeting_issue_links: M2M meeting<->issue, UniqueConstraint (meeting, issue).
+//
+//   Privacy: enforced lato view (queryset filter), non DB. Solo creator +
+//   attendees vedono il meeting. Workspace admin vedono solo metadata se
+//   il flag workspace_feature_settings.meetings_admin_audit_mode=true.
+//
+//   Niente endpoints in v1.34a: arrivano in v1.34b (CRUD + RSVP).
+//
 // v1.33m: REVERT al filter originale per People/team_issues +
 //   fix dei side-effect via Subquery e custom Prefetch.
 //
@@ -1329,7 +1486,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.33m";
+const CUSTOM_PATCH_TAG = "PATCHED v1.34f";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states

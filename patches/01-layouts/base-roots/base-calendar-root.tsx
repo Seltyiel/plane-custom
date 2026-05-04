@@ -9,6 +9,12 @@
  * AbortError in `throw undefined`. Se la promise non ha un .catch, il
  * browser emette "Uncaught (in promise) undefined" e React cestina
  * l'intero sottoalbero -> pagina bianca.
+ *
+ * PATCH (plane-custom) v1.34f - wrappa <CalendarChart/> con
+ * <MeetingsCalendarProvider/> che fetcha i meeting visibili nel range
+ * mese corrente UNA VOLTA SOLA. Le day cells consumano via context
+ * tramite useMeetingsForDate(date). Privacy ereditata dal backend
+ * (endpoint /meetings/ filtra per creator+attendee).
  */
 
 import type { FC } from "react";
@@ -30,6 +36,8 @@ import { useIssuesActions } from "@/hooks/use-issues-actions";
 import type { IQuickActionProps } from "../list/list-view-types";
 import { CalendarChart } from "./calendar";
 import { handleDragDrop } from "./utils";
+// PATCH v1.34f: meeting overlay provider.
+import { MeetingsCalendarProvider } from "@/components/meetings/meetings-calendar-context";
 
 // PATCH v1.08: swallow abort-induced `throw undefined` rejections.
 const swallowAbort = (e: unknown) => {
@@ -179,38 +187,48 @@ export const BaseCalendarRoot = observer(function BaseCalendarRoot(props: IBaseC
   return (
     <>
       <div className="h-full w-full overflow-hidden bg-surface-1 pt-4">
-        <CalendarChart
-          issuesFilterStore={issuesFilter}
-          issues={issueMap}
-          groupedIssueIds={groupedIssueIds}
-          layout={displayFilters?.calendar?.layout}
-          showWeekends={displayFilters?.calendar?.show_weekends ?? false}
-          issueCalendarView={issueCalendarView}
-          quickActions={({ issue, parentRef, customActionButton, placement }) => (
-            <QuickActions
-              parentRef={parentRef}
-              customActionButton={customActionButton}
-              issue={issue}
-              handleDelete={async () => removeIssue(issue.project_id, issue.id)}
-              handleUpdate={async (data) => updateIssue && updateIssue(issue.project_id, issue.id, data)}
-              handleRemoveFromView={async () => removeIssueFromView && removeIssueFromView(issue.project_id, issue.id)}
-              handleArchive={async () => archiveIssue && archiveIssue(issue.project_id, issue.id)}
-              handleRestore={async () => restoreIssue && restoreIssue(issue.project_id, issue.id)}
-              readOnly={!canEditProperties(issue.project_id ?? undefined) || isCompletedCycle}
-              placements={placement}
-            />
-          )}
-          loadMoreIssues={loadMoreIssues}
-          getPaginationData={getPaginationData}
-          getGroupIssueCount={getGroupIssueCount}
-          addIssuesToView={addIssuesToView}
-          quickAddCallback={quickAddIssue}
-          readOnly={isCompletedCycle}
-          updateFilters={updateFilters}
-          handleDragAndDrop={handleDragAndDrop}
-          canEditProperties={canEditProperties}
-          isEpic={isEpic}
-        />
+        {/* PATCH v1.34f: provider che fetcha i meeting visibili nel range
+            del mese corrente. Le day cells consumano via useMeetingsForDate
+            (renderizzate da CalendarMeetingBlocks dentro issue-blocks.tsx). */}
+        <MeetingsCalendarProvider
+          workspaceSlug={workspaceSlug?.toString() || ""}
+          startDate={startDate}
+          endDate={endDate}
+          projectId={projectId?.toString()}
+        >
+          <CalendarChart
+            issuesFilterStore={issuesFilter}
+            issues={issueMap}
+            groupedIssueIds={groupedIssueIds}
+            layout={displayFilters?.calendar?.layout}
+            showWeekends={displayFilters?.calendar?.show_weekends ?? false}
+            issueCalendarView={issueCalendarView}
+            quickActions={({ issue, parentRef, customActionButton, placement }) => (
+              <QuickActions
+                parentRef={parentRef}
+                customActionButton={customActionButton}
+                issue={issue}
+                handleDelete={async () => removeIssue(issue.project_id, issue.id)}
+                handleUpdate={async (data) => updateIssue && updateIssue(issue.project_id, issue.id, data)}
+                handleRemoveFromView={async () => removeIssueFromView && removeIssueFromView(issue.project_id, issue.id)}
+                handleArchive={async () => archiveIssue && archiveIssue(issue.project_id, issue.id)}
+                handleRestore={async () => restoreIssue && restoreIssue(issue.project_id, issue.id)}
+                readOnly={!canEditProperties(issue.project_id ?? undefined) || isCompletedCycle}
+                placements={placement}
+              />
+            )}
+            loadMoreIssues={loadMoreIssues}
+            getPaginationData={getPaginationData}
+            getGroupIssueCount={getGroupIssueCount}
+            addIssuesToView={addIssuesToView}
+            quickAddCallback={quickAddIssue}
+            readOnly={isCompletedCycle}
+            updateFilters={updateFilters}
+            handleDragAndDrop={handleDragAndDrop}
+            canEditProperties={canEditProperties}
+            isEpic={isEpic}
+          />
+        </MeetingsCalendarProvider>
       </div>
     </>
   );
