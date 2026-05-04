@@ -348,6 +348,14 @@ REM cliccando un task da una list/board/calendar view).
 copy /Y "%PATCHES_DIR%\13-meetings\peek-overview-properties.tsx" "%PLANE_SRC%\apps\web\core\components\issues\peek-overview\properties.tsx" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.34h-2: toggle Show meetings nel Display dropdown (solo Calendar
+REM layout). Storage: workspace_feature_settings (v1.33e generic), key
+REM meetings_show_in_calendar (default true). PATCH richiede admin.
+copy /Y "%PATCHES_DIR%\13-meetings\meetings-show-toggle.tsx" "%PLANE_SRC%\apps\web\core\components\meetings\meetings-show-toggle.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\display-filters-selection.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\filters\header\display-filters\display-filters-selection.tsx" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.34g: workspace settings page Meetings (audit mode toggle).
 REM   - settings-form: riusa useFeatureSettings (v1.33e) per il flag
 REM     meetings_admin_audit_mode.

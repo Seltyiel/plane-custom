@@ -6,6 +6,52 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.34h-2a] - 2026-05-04 (Meetings: toggle Show/Hide ora effettivamente nasconde i meeting)
+
+### Fixato
+- Il toggle si toglieva visivamente ma il calendar continuava a mostrare i meeting.
+- Causa: passavo `filters=undefined` a `useMeetings` quando off, ma il `useMeetings` fetcher fa GET senza from/to comunque (ritorna tutti i meeting visibili). Quindi i meeting venivano comunque caricati e renderizzati.
+- Fix: ora passo `workspaceSlug=""` quando off → SWR key e' null → niente fetch → `meetings=[]` → niente render.
+
+### File toccati
+- `patches/13-meetings/meetings-calendar-context.tsx`
+- `patches/00-core/edition-badge.tsx`: CUSTOM_PATCH_TAG -> v1.34h-2a
+
+---
+
+## [v1.34h-2] - 2026-05-04 (Meetings: toggle Show/Hide nel Display dropdown - via workspace_feature_settings)
+
+### Aggiunto
+- **Toggle "Show meetings in calendar"** nel Display dropdown stock, accanto a "Show sub-work items". Pattern visuale identico (`FilterOption` stock con `CheckIcon` + `<button>`). Visibile solo quando `displayFilters.layout === "calendar"`.
+- Storage: riusa `workspace_feature_settings` (v1.33e generic), key `meetings_show_in_calendar` (default `true`). Per-workspace, non per-user.
+- Read: `useFeatureSettings(slug).getFlag<boolean>("meetings_show_in_calendar", true)` — sincrono dal cache SWR (gia' fetchato dalla pagina Settings v1.33f e v1.34g, niente extra fetch).
+- Write: `setFlags({ meetings_show_in_calendar: !current })` con cache mutate sincrono.
+- Backend gating: PATCH richiede admin. Member/Guest vedono il toggle visibile (riflette il flag corrente) ma in stato `disabled` con tooltip "Only workspace admins can change this setting".
+- `MeetingsCalendarProvider` legge il flag e short-circuita il fetch dei meeting se off (no fetch -> array vuoto -> niente render nei chip).
+
+### Decisione architetturale (rispetto al primo tentativo fallito)
+La prima versione di v1.34h-2 introdusse un nuovo backend (`UserMeetingPreference` + migration 0129) + nuovo hook custom + ottimistic update SWR + `dlog` in render. Il `dlog` in render ha causato side effect durante hydration React → errori #418/#423 → UI corrotta. Stash reference: `git stash@{0}`.
+
+Il nuovo approccio v1.34h-2 e' minimale:
+- Niente backend nuovo (riuso `workspace_feature_settings` v1.33e).
+- Niente hook custom (riuso `useFeatureSettings` v1.33e).
+- Niente migration nuova.
+- Niente `dlog` in render.
+- Niente optimistic update (basta `mutate` sincrono di SWR).
+- Niente toast invasivi (errori swallow silente).
+- Toggle gating: admin-only via `useUserPermissions` (UI consistente con il backend gating).
+
+Trade-off accettato: per-workspace invece di per-user. Se un giorno servira' per-user, si fara' come iter separato con backend dedicato.
+
+### File toccati
+- Nuovo: `patches/13-meetings/meetings-show-toggle.tsx`
+- Nuovo: `patches/13-meetings/display-filters-selection.tsx` (full-replacement stock)
+- Modificato: `patches/13-meetings/meetings-calendar-context.tsx` (import `useFeatureSettings`, short-circuit fetch se off)
+- `build.bat`: 2 nuove copy step v1.34h-2
+- `patches/00-core/edition-badge.tsx`: CUSTOM_PATCH_TAG -> v1.34h-2
+
+---
+
 ## [v1.34h-1] - 2026-05-04 (Meetings: multi-day events nel Calendar overlay)
 
 ### Cambiato

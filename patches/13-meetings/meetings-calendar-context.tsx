@@ -23,7 +23,12 @@ import { createContext, useContext, useMemo } from "react";
 import type { ReactNode } from "react";
 import { renderFormattedPayloadDate } from "@plane/utils";
 import { useMeetings } from "@/hooks/use-meetings";
+import { useFeatureSettings } from "@/hooks/use-feature-settings";
 import type { IMeeting } from "@/services/meeting.service";
+
+// PATCH v1.34h-2: flag toggle Show/Hide meetings nel Calendar.
+// Storage: workspace_feature_settings (per-workspace, admin-only PATCH).
+const SHOW_FLAG_KEY = "meetings_show_in_calendar";
 
 type CtxValue = {
   getMeetingsForDate: (date: Date) => IMeeting[];
@@ -50,6 +55,14 @@ export function MeetingsCalendarProvider({
   projectId,
   children,
 }: ProviderProps) {
+  // PATCH v1.34h-2: leggi il flag toggle. Se off -> passa workspaceSlug=null
+  // a useMeetings cosi' SWR key e' null e niente fetch (e niente dati cachati
+  // della precedente fetch saranno usati perche' SWR ritorna data=undefined).
+  // NB: non basta passare filters=undefined perche' useMeetings fa fetch
+  // senza from/to comunque.
+  const { getFlag } = useFeatureSettings(workspaceSlug);
+  const enabled = getFlag<boolean>(SHOW_FLAG_KEY, true);
+
   // Convert YYYY-MM-DD a ISO datetime per i filtri backend.
   // startDate / endDate sono inclusivi del giorno -> espandi a tutto il giorno.
   const fromIso = startDate ? new Date(`${startDate}T00:00:00`).toISOString() : undefined;
@@ -60,7 +73,9 @@ export function MeetingsCalendarProvider({
     return projectId ? { from: fromIso, to: toIso, project_id: projectId } : { from: fromIso, to: toIso };
   }, [fromIso, toIso, projectId]);
 
-  const { meetings, isLoading } = useMeetings(workspaceSlug, filters);
+  // Passo slug=null se toggle off -> SWR non fetcha -> meetings=[].
+  const effectiveSlug = enabled ? workspaceSlug : "";
+  const { meetings, isLoading } = useMeetings(effectiveSlug, filters);
 
   // Map: ISO date string YYYY-MM-DD -> meeting[].
   // PATCH v1.34h-1: multi-day events. Per ogni meeting cicliamo dal giorno
