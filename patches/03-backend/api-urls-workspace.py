@@ -98,13 +98,15 @@ from plane.app.views.workspace.time_log import (
     TimeLogApproveEndpoint,
     TimeLogRejectEndpoint,
 )
-# PATCH v1.34b: Meeting endpoints (CRUD + RSVP + attendees + issue links + visibility).
+# PATCH v1.34b + v1.35a-4: Meeting endpoints (CRUD + RSVP + attendees +
+# issue links + skip-occurrence + visibility).
 from plane.app.views.workspace.meeting import (
     MeetingListCreateEndpoint,
     MeetingDetailEndpoint,
     MeetingRsvpEndpoint,
     MeetingAttendeesEndpoint,
     MeetingIssueLinksEndpoint,
+    MeetingSkipOccurrenceEndpoint,
     IssueMeetingsEndpoint,
 )
 
@@ -375,6 +377,13 @@ urlpatterns = [
         "workspaces/<str:slug>/meetings/<uuid:meeting_id>/issue-links/<uuid:link_id>/",
         MeetingIssueLinksEndpoint.as_view(),
         name="workspace-meeting-issue-link-detail",
+    ),
+    # PATCH v1.35a-4: skip a single occurrence of a recurring meeting
+    # (aggiunge la data a excluded_dates del master).
+    path(
+        "workspaces/<str:slug>/meetings/<uuid:meeting_id>/skip-occurrence/",
+        MeetingSkipOccurrenceEndpoint.as_view(),
+        name="workspace-meeting-skip-occurrence",
     ),
     # GET dei meeting linkati a una specifica issue (visibili all'utente).
     path(

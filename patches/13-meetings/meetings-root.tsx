@@ -19,7 +19,7 @@
 import { useMemo, useState } from "react";
 import { observer } from "mobx-react";
 import { useParams } from "react-router";
-import { Plus, Calendar, MapPin, Users, Clock } from "lucide-react";
+import { Plus, Calendar, MapPin, Users, Clock, RefreshCw } from "lucide-react";
 import { Button } from "@plane/propel/button";
 // hooks
 import { useUser } from "@/hooks/store/user";
@@ -78,13 +78,24 @@ export const MeetingsRoot = observer(function MeetingsRoot() {
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
 
+  // v1.35a-3: deduplica le occorrenze virtuali (is_occurrence=true).
+  // Il backend ritorna anche le N occorrenze espanse di un meeting
+  // ricorrente; nella list workspace-level vogliamo mostrare solo i
+  // master (1 riga per meeting), non l'espansione settimana per settimana.
+  // Il Calendar view (che passa from/to) e' l'altro consumer e li
+  // vuole espansi - quindi de-dup solo lato list.
+  const masters = useMemo(
+    () => meetings.filter((m) => !m.is_occurrence),
+    [meetings],
+  );
+
   const sorted = useMemo(() => {
-    return [...meetings].sort((a, b) => {
+    return [...masters].sort((a, b) => {
       const sa = new Date(a.start_at).getTime();
       const sb = new Date(b.start_at).getTime();
       return sa - sb;
     });
-  }, [meetings]);
+  }, [masters]);
 
   const upcoming = sorted.filter((m) => new Date(m.end_at).getTime() >= Date.now() && !m.is_cancelled);
   const past = sorted.filter((m) => new Date(m.end_at).getTime() < Date.now() || m.is_cancelled);
@@ -103,7 +114,16 @@ export const MeetingsRoot = observer(function MeetingsRoot() {
           <div className="flex items-center gap-2">
             <Calendar className="size-3.5 text-secondary flex-shrink-0" />
             <div className="min-w-0">
-              <div className="text-13 font-medium text-primary truncate">{m.title}</div>
+              <div className="text-13 font-medium text-primary truncate flex items-center gap-1.5">
+                {m.title}
+                {/* v1.35a-3: indicatore visivo recurring meeting nella list. */}
+                {m.recurrence_rule && (
+                  <RefreshCw
+                    className="size-3 text-secondary flex-shrink-0"
+                    aria-label="Recurring meeting"
+                  />
+                )}
+              </div>
               {m.is_audit_only && (
                 <div className="text-11 text-warning-primary mt-0.5">audit-only</div>
               )}

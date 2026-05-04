@@ -4,10 +4,14 @@
  * See the LICENSE file for details.
  */
 
-// PATCH (plane-custom) v1.34d:
-//  Service frontend per Meeting CRUD + RSVP + attendees + issue-links.
-//  TypeScript types co-locate qui (evitiamo full-replacement di
-//  packages/types/src/index.ts che e' un grande hub fragile).
+// PATCH (plane-custom) v1.34d + v1.35a-2:
+//  v1.34d: service frontend per Meeting CRUD + RSVP + attendees + issue-links.
+//          TypeScript types co-locate qui (evitiamo full-replacement di
+//          packages/types/src/index.ts che e' un grande hub fragile).
+//  v1.35a-2: aggiunti campi recurrence al payload (recurrence_rule,
+//            recurrence_until, excluded_dates) + flag is_occurrence /
+//            occurrence_date sul tipo IMeeting per le occorrenze virtuali
+//            espansa lato backend (v1.35a-1).
 
 import { API_BASE_URL } from "@plane/constants";
 import { APIService } from "@/services/api.service";
@@ -75,6 +79,10 @@ export interface IMeeting {
   is_cancelled: boolean;
   // audit-only flag (admin con feature flag meetings_admin_audit_mode=true)
   is_audit_only?: boolean;
+  // v1.35a-1: flag e date settati dal backend per occorrenze virtuali
+  // generate dall'espansione di un meeting con recurrence_rule.
+  is_occurrence?: boolean;
+  occurrence_date?: string; // YYYY-MM-DD
 }
 
 export interface IMeetingCreatePayload {
@@ -87,6 +95,10 @@ export interface IMeetingCreatePayload {
   timezone?: string;
   reminder_minutes_before?: number;
   project?: string | null;
+  // v1.35a-2: campi recurrence (RFC 5545 RRULE).
+  recurrence_rule?: string | null;
+  recurrence_until?: string | null;
+  excluded_dates?: string[];
 }
 
 export type IMeetingUpdatePayload = Partial<IMeetingCreatePayload>;
@@ -159,6 +171,23 @@ export class MeetingService extends APIService {
     return this.delete(`/api/workspaces/${workspaceSlug}/meetings/${meetingId}/`, {
       data: reason ? { reason } : {},
     })
+      .then((r) => r.data)
+      .catch((e) => {
+        throw e?.response?.data ?? e;
+      });
+  }
+
+  // v1.35a-4: skip a single occurrence of a recurring meeting (aggiunge
+  // `occurrenceDate` a excluded_dates del master).
+  async skipOccurrence(
+    workspaceSlug: string,
+    meetingId: string,
+    occurrenceDate: string // YYYY-MM-DD
+  ): Promise<IMeeting> {
+    return this.post(
+      `/api/workspaces/${workspaceSlug}/meetings/${meetingId}/skip-occurrence/`,
+      { occurrence_date: occurrenceDate }
+    )
       .then((r) => r.data)
       .catch((e) => {
         throw e?.response?.data ?? e;

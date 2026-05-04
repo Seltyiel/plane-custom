@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # See the LICENSE file for details.
 #
-# PATCH (plane-custom) v1.34a:
-#  Serializers per Meeting / MeetingAttendee / MeetingIssueLink.
+# PATCH (plane-custom) v1.34a + v1.35a-1:
+#  v1.34a: serializers per Meeting / MeetingAttendee / MeetingIssueLink.
+#  v1.35a-1: validazione `recurrence_rule` come RRULE iCalendar parsabile.
 
 from rest_framework import serializers
 
@@ -179,6 +180,38 @@ class MeetingSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"reminder_minutes_before": "Must be 0 or positive."}
             )
+
+        # v1.35a-1: validazione recurrence_rule come RRULE iCalendar.
+        # Whitelist conservativa di FREQ (no MINUTELY/SECONDLY) per evitare
+        # rule abusive. Test parsabilita' con dateutil.rrule.rrulestr.
+        rrule_str = attrs.get("recurrence_rule")
+        if rrule_str:
+            allowed_freq = {"DAILY", "WEEKLY", "MONTHLY", "YEARLY"}
+            # FREQ=XXX deve essere presente.
+            tokens = {kv.split("=")[0].upper(): kv.split("=")[1].upper()
+                      for kv in rrule_str.split(";") if "=" in kv}
+            if "FREQ" not in tokens or tokens["FREQ"] not in allowed_freq:
+                raise serializers.ValidationError({
+                    "recurrence_rule": (
+                        "FREQ must be one of: DAILY, WEEKLY, MONTHLY, YEARLY."
+                    ),
+                })
+            try:
+                from dateutil.rrule import rrulestr
+                # dtstart fittizio solo per parse-test.
+                rrulestr(
+                    rrule_str,
+                    dtstart=start_at or (self.instance.start_at if self.instance else None),
+                )
+            except ImportError:
+                # python-dateutil non disponibile: skippiamo la validazione,
+                # la chiamata di expand fallira' silenziosamente piu' tardi.
+                pass
+            except Exception as exc:
+                raise serializers.ValidationError({
+                    "recurrence_rule": f"Invalid RRULE: {exc}",
+                })
+
         return attrs
 
 

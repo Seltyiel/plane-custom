@@ -2,7 +2,15 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # See the LICENSE file for details.
 #
-# PATCH (plane-custom) v1.34b + v1.34c:
+# PATCH (plane-custom) v1.34b + v1.34c + v1.34h-4 + v1.35a-1:
+#  v1.35a-1: RRULE expansion per Meeting ricorrenti. Helper
+#            `_expand_meeting_occurrences` + integrazione nel GET list
+#            endpoint che ora espande i meeting con `recurrence_rule` in
+#            N occorrenze virtuali entro la finestra [from, to]. Le
+#            occorrenze ritornano col flag `is_occurrence: true` e
+#            `occurrence_date: "YYYY-MM-DD"`.
+#
+# Originale (v1.34b/c):
 #  Endpoint REST per Meeting + Attendee + IssueLink + RSVP.
 #  v1.34c: hook email task post-create / post-patch / post-delete /
 #          post-add-attendee. Solo attendees interni ricevono email.
@@ -32,9 +40,10 @@
 #     (ownership transfer, non implementato in v1.34b - rinviato).
 
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
@@ -161,10 +170,86 @@ def _log_meeting_activity(issue, meeting, verb, comment, actor):
         pass
 
 
+# v1.35a-1: cap di sicurezza per la RRULE expansion. Evita DoS da
+# rule mal formate (es. "FREQ=MINUTELY") o finestre troppo larghe.
+_MAX_OCCURRENCES_PER_MEETING = 365
+_MAX_RECURRENCE_HORIZON_DAYS = 365 * 5  # 5 anni dal master.start_at se nessun cap
+
+
+def _expand_meeting_occurrences(meeting, date_from, date_to,
+                                 max_occurrences=_MAX_OCCURRENCES_PER_MEETING):
+    """
+    PATCH v1.35a-1: espande un Meeting con `recurrence_rule` settato in N
+    occorrenze virtuali entro la finestra [date_from, date_to]. Ritorna
+    lista di dict con override `start_at`, `end_at` e `occurrence_date`.
+
+    Le occorrenze in `excluded_dates` (cancellate singolarmente) sono
+    saltate.
+
+    Cap di sicurezza:
+    - max 365 occorrenze per singola request (DoS protection)
+    - max 5 anni dal master.start_at se nessun UNTIL/COUNT/recurrence_until
+
+    Ritorna [] se: meeting non ricorrente, RRULE non parsabile, finestra
+    incompatibile, o python-dateutil non disponibile.
+    """
+    if not meeting.recurrence_rule:
+        return []
+    try:
+        from dateutil.rrule import rrulestr
+    except ImportError:
+        return []
+
+    excluded = set(meeting.excluded_dates or [])
+    duration = meeting.end_at - meeting.start_at
+
+    # Lower bound: vogliamo includere occorrenze il cui end_at e' >= date_from.
+    # Quindi facciamo lookup partendo da date_from - duration. Ma se
+    # window_start scende sotto master.start_at, lo riportiamo li.
+    if date_from:
+        window_start = date_from - duration
+        if window_start < meeting.start_at:
+            window_start = meeting.start_at
+    else:
+        window_start = meeting.start_at
+
+    # Upper bound: prendi il minimo tra date_to (richiesta), recurrence_until
+    # (settato dal creator) e cap di 5 anni.
+    five_year_cap = meeting.start_at + timedelta(days=_MAX_RECURRENCE_HORIZON_DAYS)
+    candidates = [c for c in [date_to, meeting.recurrence_until, five_year_cap] if c]
+    if not candidates:
+        return []
+    window_end = min(candidates)
+
+    if window_end < window_start:
+        return []
+
+    try:
+        rule = rrulestr(meeting.recurrence_rule, dtstart=meeting.start_at)
+    except Exception:
+        return []
+
+    occurrences = []
+    try:
+        for occ_dt in rule.between(window_start, window_end, inc=True):
+            if len(occurrences) >= max_occurrences:
+                break
+            occ_date_str = occ_dt.date().isoformat()
+            if occ_date_str in excluded:
+                continue
+            occurrences.append({
+                "occurrence_date": occ_date_str,
+                "start_at": occ_dt,
+                "end_at": occ_dt + duration,
+            })
+    except Exception:
+        return []
+
+    return occurrences
+
+
 def _get_visible_meetings(workspace, user):
     """Ritorna queryset Meeting visibile all'utente."""
-    from django.db.models import Q
-
     return (
         Meeting.objects.filter(workspace=workspace)
         .filter(Q(created_by=user) | Q(attendees__user=user))
@@ -217,29 +302,61 @@ class MeetingListCreateEndpoint(BaseAPIView):
                 .exclude(id__in=visible_ids)
             )
 
-        # Apply filters
+        # v1.35a-1: separa meeting ricorrenti da non-ricorrenti.
+        # I non-ricorrenti applicano i filtri data classici. I ricorrenti
+        # bypassano il filtro start/end perche' il master e' la PRIMA
+        # occorrenza e potrebbe stare fuori finestra ma generare occorrenze
+        # dentro finestra; vengono filtrati solo per project + cancellation.
+        non_recurring_qs = qs.filter(
+            Q(recurrence_rule__isnull=True) | Q(recurrence_rule="")
+        )
+        recurring_qs = qs.exclude(
+            Q(recurrence_rule__isnull=True) | Q(recurrence_rule="")
+        )
+
+        # Apply filters al qs non-ricorrente.
         if date_from:
-            qs = qs.filter(end_at__gte=date_from)
+            non_recurring_qs = non_recurring_qs.filter(end_at__gte=date_from)
             if light_extra_qs is not None:
                 light_extra_qs = light_extra_qs.filter(end_at__gte=date_from)
         if date_to:
-            qs = qs.filter(start_at__lte=date_to)
+            non_recurring_qs = non_recurring_qs.filter(start_at__lte=date_to)
             if light_extra_qs is not None:
                 light_extra_qs = light_extra_qs.filter(start_at__lte=date_to)
         if project_id:
-            qs = qs.filter(project_id=project_id)
+            non_recurring_qs = non_recurring_qs.filter(project_id=project_id)
+            recurring_qs = recurring_qs.filter(project_id=project_id)
             if light_extra_qs is not None:
                 light_extra_qs = light_extra_qs.filter(project_id=project_id)
 
-        qs = qs.order_by("start_at")
+        non_recurring_qs = (
+            non_recurring_qs.filter(cancelled_at__isnull=True).order_by("start_at")
+        )
+        recurring_qs = recurring_qs.filter(cancelled_at__isnull=True)
 
-        # Default: niente meeting cancellati nel listing (sono mostrati solo
-        # nel detail per audit/storia).
-        qs = qs.filter(cancelled_at__isnull=True)
+        result = MeetingSerializer(non_recurring_qs, many=True).data
 
-        result = MeetingSerializer(qs, many=True).data
+        # v1.35a-1: espandi i meeting ricorrenti in occorrenze virtuali.
+        # Ogni occorrenza eredita tutto il payload del master e si
+        # differenzia per start_at/end_at calcolati + flag `is_occurrence`.
+        for master in recurring_qs:
+            occurrences = _expand_meeting_occurrences(master, date_from, date_to)
+            if not occurrences:
+                continue
+            master_data = MeetingSerializer(master).data
+            for occ in occurrences:
+                result.append({
+                    **master_data,
+                    "start_at": occ["start_at"].isoformat(),
+                    "end_at": occ["end_at"].isoformat(),
+                    "occurrence_date": occ["occurrence_date"],
+                    "is_occurrence": True,
+                })
 
-        # Audit-only: aggiungi i light alla fine, marker is_audit_only=true
+        # Audit-only: aggiungi i light alla fine, marker is_audit_only=true.
+        # NB: in v1.35a-1 non espandiamo le occorrenze in audit mode
+        # (admin vede solo il master). Espansione audit rinviata a v1.35a-1b
+        # se serve.
         if light_extra_qs is not None:
             light_extra_qs = light_extra_qs.filter(cancelled_at__isnull=True).order_by("start_at")
             for entry in MeetingLightSerializer(light_extra_qs, many=True).data:
@@ -281,6 +398,10 @@ class MeetingListCreateEndpoint(BaseAPIView):
                 all_day=serializer.validated_data.get("all_day", False),
                 timezone=serializer.validated_data.get("timezone", "UTC"),
                 reminder_minutes_before=serializer.validated_data.get("reminder_minutes_before", 15),
+                # v1.35a-1: campi recurrence se forniti dal client
+                recurrence_rule=serializer.validated_data.get("recurrence_rule") or None,
+                recurrence_until=serializer.validated_data.get("recurrence_until"),
+                excluded_dates=serializer.validated_data.get("excluded_dates", []),
                 created_by=request.user,
             )
 
@@ -363,6 +484,9 @@ class MeetingDetailEndpoint(BaseAPIView):
             "title", "description", "location",
             "start_at", "end_at", "all_day", "timezone",
             "reminder_minutes_before", "project",
+            # v1.35a-1: recurrence editabili (whole-series edit). Edit di
+            # singola occorrenza vs serie e' v1.35a-4 con endpoint dedicato.
+            "recurrence_rule", "recurrence_until", "excluded_dates",
         )
         editable = {k: v for k, v in request.data.items() if k in editable_fields}
         if not editable:
@@ -568,6 +692,83 @@ class MeetingAttendeesEndpoint(BaseAPIView):
 
         attendee.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class MeetingSkipOccurrenceEndpoint(BaseAPIView):
+    """
+    PATCH (plane-custom) v1.35a-4:
+
+    POST /workspaces/<slug>/meetings/<id>/skip-occurrence/
+        body: {"occurrence_date": "YYYY-MM-DD"}
+
+    Permette di cancellare una singola occorrenza di un meeting ricorrente
+    senza toccare la serie. Aggiunge `occurrence_date` all'array
+    `excluded_dates` del master. La GET list endpoint poi salta quella
+    occorrenza durante l'espansione (vedi `_expand_meeting_occurrences`).
+
+    Solo il creator del meeting puo' skipare un'occorrenza.
+
+    Ritorna il meeting aggiornato (incluso il nuovo excluded_dates).
+    """
+
+    @allow_permission([ROLE.ADMIN, ROLE.MEMBER], level="WORKSPACE")
+    def post(self, request, slug, meeting_id):
+        try:
+            workspace = Workspace.objects.get(slug=slug)
+        except Workspace.DoesNotExist:
+            return Response({"error": "Workspace not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            meeting = Meeting.objects.get(pk=meeting_id, workspace=workspace)
+        except Meeting.DoesNotExist:
+            return Response({"error": "Meeting not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if meeting.created_by_id != request.user.id:
+            return Response(
+                {"error": "Only the meeting creator can skip an occurrence"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if not meeting.recurrence_rule:
+            return Response(
+                {"error": "Meeting is not recurring; nothing to skip"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        occurrence_date = (request.data or {}).get("occurrence_date")
+        if not occurrence_date:
+            return Response(
+                {"error": "occurrence_date is required (format YYYY-MM-DD)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validazione formato.
+        try:
+            datetime.strptime(occurrence_date, "%Y-%m-%d")
+        except ValueError:
+            return Response(
+                {"error": "occurrence_date must be YYYY-MM-DD"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        excluded = list(meeting.excluded_dates or [])
+        if occurrence_date in excluded:
+            # idempotente: gia' skipata, no-op.
+            return Response(
+                MeetingSerializer(meeting).data, status=status.HTTP_200_OK
+            )
+        excluded.append(occurrence_date)
+        meeting.excluded_dates = excluded
+        meeting.save(update_fields=["excluded_dates", "updated_at"])
+
+        # Refetch con prefetch per la response.
+        meeting = (
+            Meeting.objects
+            .select_related("created_by", "project")
+            .prefetch_related("attendees", "attendees__user", "issue_links")
+            .get(pk=meeting.id)
+        )
+        return Response(MeetingSerializer(meeting).data, status=status.HTTP_200_OK)
 
 
 class MeetingIssueLinksEndpoint(BaseAPIView):

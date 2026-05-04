@@ -6,6 +6,99 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.35a-4] - 2026-05-04 (Meetings: cancel singola occorrenza vs serie)
+
+### Aggiunto
+- **Backend** nuovo endpoint `POST /api/workspaces/<slug>/meetings/<id>/skip-occurrence/` con body `{ "occurrence_date": "YYYY-MM-DD" }`. Aggiunge la data a `excluded_dates` del master meeting. Solo il creator puo' invocarlo. Idempotente. La GET list endpoint poi salta quella occorrenza durante l'espansione (logica gia' presente in `_expand_meeting_occurrences` v1.35a-1, ora effettivamente sfruttata).
+- **Frontend** `meeting-service.ts`: nuovo metodo `skipOccurrence(slug, meetingId, occurrenceDate)`.
+- **Detail modal** `meeting-detail-modal.tsx`: `handleCancel` ora distingue 2 casi:
+  - Modal aperto cliccando un'occorrenza di un meeting ricorrente (`occurrenceDate` set + `recurrence_rule` non-null): apre un prompt dove l'utente sceglie tra `"this"` (skip solo questa occorrenza), `"series"` (cancel master), oppure aborta.
+  - Altri casi: comportamento originale (cancel del master).
+- URL route registrata in `api-urls-workspace.py`.
+
+### Scope rinviato
+- **Edit single occurrence** (creare un Meeting child con `parent_meeting=master` per override una occorrenza specifica) e' rinviato a v1.35a-4b. Il design e' chiaro (campo `parent_meeting` gia' presente nel model) ma la UI richiede un secondo modal e cura nei race condition tra master/child. Per ora "Edit" su un'occorrenza edita il master (whole series).
+
+### Note implementative
+- Il prompt scelta usa `window.prompt` come MVP (UX minimale ma funzionale). Sostituibile con un modal scelta dedicato in v1.35a-4c se l'UX da prompt risulta scomoda.
+- Lo skip e' idempotente: chiamare 2 volte con la stessa `occurrence_date` non duplica il record in `excluded_dates`.
+
+---
+
+## [v1.35a-3] - 2026-05-04 (Meetings: indicatori visivi recurrence + occurrence_date nel detail)
+
+### Aggiunto
+- **Calendar overlay** (`calendar-meeting-blocks.tsx`): nelle tile dei meeting, accanto all'icona Calendar, compare un'icona `RefreshCw` quando il meeting e' ricorrente (`recurrence_rule != null` o `is_occurrence === true`). Click su un'occorrenza passa l'`occurrence_date` al detail modal.
+- **Detail modal** (`meeting-detail-modal.tsx`): nel header sotto il titolo, badge `accent-primary/10` con `RefreshCw` + summary human-readable della rule (es. "Weekly on Monday, 13 occurrences", "Every weekday", "Monthly on day 15"). Tooltip espone la stringa RRULE raw per debug.
+- **Detail modal banner**: se aperto cliccando un'occorrenza virtuale, badge `surface-2` "Occurrence of YYYY-MM-DD" indica all'utente la data specifica dell'occorrenza visualizzata (vs il master).
+- **Meetings list page** (`meetings-root.tsx`): icona `RefreshCw` accanto al titolo nei row delle tabelle Upcoming / Past per i meeting ricorrenti.
+
+### De-duplicazione list
+- Il backend GET `/meetings/` ritorna anche le N occorrenze virtuali di un meeting ricorrente. Il **Calendar view** le vuole tutte (rendering giorno per giorno). La **list workspace** invece vuole solo il master (1 riga per meeting). Nuovo filtro client-side in `meetings-root.tsx`: `meetings.filter(m => !m.is_occurrence)` prima del sort. Il backend non viene cambiato (il duplo behavior dipende dal consumer).
+
+### Helper aggiunti
+- `summarizeRecurrence(rrule, startISO)` in `meeting-detail-modal.tsx`: parser stand-alone della RRULE che ritorna stringa human-readable. Speculare a `previewText` in `meeting-create-modal.tsx`.
+
+### Note
+- L'icona usa `lucide-react.RefreshCw`, scelta per coerenza visuale con il convenzionale "loop/recurring" pattern di Google Calendar e Microsoft Outlook.
+
+---
+
+## [v1.35a-2b] - 2026-05-04 (Meetings: hotfix completo cascade-close + focus-trap)
+
+### Bug
+- Step 1 (osservato in v1.35a-2): aprire detail modal, click "Edit" → click su un qualsiasi input dell'edit chiudeva entrambi i modal a cascata (HeadlessUI outside-click).
+- Step 2 (osservato dopo v1.35a-2a): risolto il cascade-close gating `handleClose` del detail con `!editOpen`, ma comparso un secondo problema: il focus-trap del Dialog del detail rubava il focus dagli input dell'edit. Click sul campo Title metteva focus, ma typing non registrava nulla. Solo il select Repeat funzionava (interazione native browser che non richiede focus sostenuto).
+
+### Fix v1.35a-2b
+- Soluzione corretta: nel detail modal, settare `isOpen={isOpen && !editOpen}`. Mentre l'edit e' aperto il detail e' completamente nascosto (Dialog smontato dopo transizione → no focus-trap conflict, no outside-click cascade). Quando l'edit si chiude (`setEditOpen(false)`), il detail si rimonta automaticamente con i dati aggiornati via SWR mutate.
+
+---
+
+## [v1.35a-2a] - 2026-05-04 (RITIRATA - sostituita da v1.35a-2b)
+- Tentativo iniziale di fix con gating `handleClose={!editOpen && ...}`. Risolveva il cascade-close ma lasciava attivo il focus-trap conflict. Sostituita da v1.35a-2b che chiude il detail completamente quando l'edit e' aperto.
+
+---
+
+## [v1.35a-2] - 2026-05-04 (Meetings: UI campo Repeat nel Create/Edit modal)
+
+### Aggiunto
+- Nuovo campo "Repeat" nel `MeetingCreateModal` con preset: Does not repeat / Daily / Weekly (lo stesso giorno settimana del start_at) / Every weekday (Mon–Fri) / Monthly same date / Monthly same weekday (es. "primo lunedì del mese") / Yearly.
+- Selettore fine ricorrenza: Never / On date / After N occurrences (con relativa input data o counter).
+- Anteprima testuale della rule selezionata (es. "Weekly on Tuesday, until 2026-12-31") per dare feedback immediato.
+- In edit mode il modal parsa la `recurrence_rule` esistente per ripopolare il preset selezionato. Se la rule non matcha nessun preset (custom RRULE) il selettore mostra "Custom rule (read-only)" con warning, e al submit la rule originale viene preservata.
+- `IMeetingCreatePayload` esteso con campi `recurrence_rule`, `recurrence_until`, `excluded_dates`. `IMeeting` esteso con flag `is_occurrence` e `occurrence_date` (popolati dal backend per le occorrenze virtuali, v1.35a-1).
+
+### Note
+- Il modal genera la stringa RRULE lato client ma la passa al backend che la valida (v1.35a-1 serializer.validate).
+- Per "Monthly same weekday" calcoliamo l'ordinale del giorno nel mese: 1°/2°/3°/4° → numero diretto, 5°+ → -1 (ultimo del mese).
+- Niente icona "ricorrente" ancora sulla tile del Calendar overlay né nel list — rinviato a v1.35a-3 insieme al click handler che apre il modal con info "occorrenza del DD/MM/YYYY".
+
+---
+
+## [v1.35a-1] - 2026-05-04 (Meetings: backend RRULE expansion per recurrence)
+
+### Aggiunto
+- Nuovo helper backend `_expand_meeting_occurrences(meeting, date_from, date_to)` in `meeting-view.py` che usa `python-dateutil.rrule.rrulestr` per espandere un Meeting con `recurrence_rule` settato in N occorrenze virtuali entro la finestra richiesta.
+- `MeetingListCreateEndpoint.get` ora separa meeting ricorrenti da non-ricorrenti: i non-ricorrenti applicano il filtro classico `start_at`/`end_at`; i ricorrenti bypassano il filtro data sul master e vengono espansi via helper. Ogni occorrenza ritornata ha:
+  - tutti i campi del master (titolo, attendees, issue_links, ecc.)
+  - `start_at`/`end_at` calcolati per quell'occorrenza
+  - `occurrence_date: "YYYY-MM-DD"` (chiave per identificare l'occorrenza)
+  - `is_occurrence: true` flag.
+- Le occorrenze in `excluded_dates` (cancellate singolarmente, v1.35a-4) vengono saltate durante l'espansione.
+- POST e PATCH endpoint ora accettano `recurrence_rule`, `recurrence_until`, `excluded_dates` come campi editabili.
+- Validazione `recurrence_rule` nel `MeetingSerializer.validate`: solo `FREQ` ∈ {DAILY, WEEKLY, MONTHLY, YEARLY} (no MINUTELY/SECONDLY); test parsing via `dateutil.rrule.rrulestr`; errore HTTP 400 con messaggio user-friendly se non parsabile.
+
+### Cap di sicurezza
+- Max 365 occorrenze ritornate per singolo meeting in una request (anti-DoS contro RRULE abusive).
+- Cap di 5 anni dal master.start_at se RRULE non specifica `UNTIL`/`COUNT` e nessun `recurrence_until`.
+
+### Note implementative
+- Audit mode (`light_extra_qs` per workspace admin con `meetings_admin_audit_mode=true`) NON espande le occorrenze ricorrenti — admin vede solo il master. Espansione audit rinviata a v1.35a-1b se richiesto.
+- L'expansion avviene nella response del list endpoint, non nel detail. Il detail di un meeting ricorrente ritorna sempre il master (single record), perché l'edit/cancel di un'occorrenza singola va via endpoint dedicato (v1.35a-4).
+
+---
+
 ## [v1.34h-4] - 2026-05-04 (Meetings: activity feed entry per link/unlink/cancel)
 
 ### Aggiunto

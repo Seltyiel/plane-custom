@@ -3,18 +3,26 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  * See the LICENSE file for details.
  *
- * PATCH (plane-custom) v1.34f-2:
- *  Detail modal con layout Plane-native: SidebarPropertyListItem stock per
- *  le proprieta' (Organizer, When, Location, Reminder), section header
- *  text-body-xs-medium, ButtonAvatars per gli avatar attendee. Tutti i
- *  pattern visuali replicano il sidebar dell'issue detail Plane.
+ * PATCH (plane-custom) v1.34f-2 + v1.35a-2b + v1.35a-3:
+ *  v1.34f-2: detail modal con layout Plane-native: SidebarPropertyListItem
+ *            stock per le proprieta' (Organizer, When, Location, Reminder),
+ *            section header text-body-xs-medium, ButtonAvatars per gli
+ *            avatar attendee.
+ *  v1.35a-2b: hotfix: isOpen={isOpen && !editOpen} per evitare cascade-close
+ *             + focus-trap conflict con il MeetingCreateModal sovrapposto
+ *             quando si clicca "Edit".
+ *  v1.35a-3: prop opzionale `occurrenceDate` (YYYY-MM-DD) per mostrare
+ *            banner "Occurrence of <date>" quando il modal viene aperto
+ *            cliccando su un'occorrenza virtuale (vs cliccando sul master).
+ *            Indicatore "Recurring · <human readable>" se il meeting ha
+ *            recurrence_rule.
  */
 
 import { useState } from "react";
 import { observer } from "mobx-react";
 import {
   X, Calendar, Clock, MapPin, Users, Edit3, Trash2,
-  Check, Slash, HelpCircle, Plus, Bell, Link2,
+  Check, Slash, HelpCircle, Plus, Bell, Link2, RefreshCw,
 } from "lucide-react";
 import { useParams, useNavigate } from "react-router";
 import { Button } from "@plane/propel/button";
@@ -71,15 +79,70 @@ const StatusBadge = ({ status }: { status: TMeetingAttendeeStatus }) => {
   );
 };
 
+// v1.35a-3: human-readable summary di una recurrence_rule. Speculare
+// alla preview generata in meeting-create-modal.tsx, ma stand-alone qui
+// per evitare imports cross-component. Cap di parsing: solo i preset noti
+// (FREQ + opzioni standard). Se la rule non matcha torna "Custom rule".
+const summarizeRecurrence = (rrule: string | null | undefined, startISO: string): string => {
+  if (!rrule) return "";
+  const tokens: Record<string, string> = {};
+  rrule.split(";").forEach((kv) => {
+    const eq = kv.indexOf("=");
+    if (eq <= 0) return;
+    tokens[kv.slice(0, eq).toUpperCase()] = kv.slice(eq + 1).toUpperCase();
+  });
+  const days: Record<string, string> = {
+    MO: "Monday", TU: "Tuesday", WE: "Wednesday", TH: "Thursday",
+    FR: "Friday", SA: "Saturday", SU: "Sunday",
+  };
+  let head = "Custom rule";
+  switch (tokens.FREQ) {
+    case "DAILY":
+      head = "Daily";
+      break;
+    case "WEEKLY":
+      if (tokens.BYDAY === "MO,TU,WE,TH,FR") head = "Every weekday";
+      else if (tokens.BYDAY && days[tokens.BYDAY]) head = `Weekly on ${days[tokens.BYDAY]}`;
+      else head = "Weekly";
+      break;
+    case "MONTHLY":
+      if (tokens.BYMONTHDAY) head = `Monthly on day ${tokens.BYMONTHDAY}`;
+      else if (tokens.BYDAY) {
+        const m = tokens.BYDAY.match(/^(-?\d+)([A-Z]{2})$/);
+        if (m) {
+          const ord = ({ "1": "first", "2": "second", "3": "third", "4": "fourth", "-1": "last" } as Record<string, string>)[m[1]] || `${m[1]}th`;
+          head = `Monthly on the ${ord} ${days[m[2]] || m[2]}`;
+        }
+      }
+      break;
+    case "YEARLY":
+      head = "Yearly";
+      break;
+  }
+  let tail = "";
+  if (tokens.UNTIL) {
+    const u = tokens.UNTIL;
+    if (u.length >= 8) tail = `, until ${u.slice(0, 4)}-${u.slice(4, 6)}-${u.slice(6, 8)}`;
+  } else if (tokens.COUNT) {
+    tail = `, ${tokens.COUNT} occurrence${tokens.COUNT === "1" ? "" : "s"}`;
+  }
+  return head + tail;
+};
+
 type Props = {
   meetingId: string;
   isOpen: boolean;
   onClose: () => void;
   onChanged?: () => void;
+  // v1.35a-3: se settato, indica che il modal e' stato aperto cliccando
+  // su un'occorrenza virtuale (vs il master record). Mostra banner
+  // "Occurrence of <date>" e prepara il contesto per v1.35a-4 edit/cancel
+  // single occurrence vs whole series.
+  occurrenceDate?: string; // YYYY-MM-DD
 };
 
 export const MeetingDetailModal = observer(function MeetingDetailModal(props: Props) {
-  const { meetingId, isOpen, onClose, onChanged } = props;
+  const { meetingId, isOpen, onClose, onChanged, occurrenceDate } = props;
   const { workspaceSlug } = useParams();
   const navigate = useNavigate();
   const slug = workspaceSlug?.toString() || "";
@@ -117,13 +180,61 @@ export const MeetingDetailModal = observer(function MeetingDetailModal(props: Pr
     }
   };
 
+  // v1.35a-4: choice dialog per cancel quando il modal e' aperto da
+  // un'occorrenza specifica di un meeting ricorrente.
+  // Possibili scelte: skip-this-occurrence | cancel-whole-series | abort.
   const handleCancel = async () => {
     if (!meeting) return;
+
+    // Caso ricorrente + aperto da occorrenza specifica: proponi la scelta.
+    if (occurrenceDate && meeting.recurrence_rule) {
+      const choice = window.prompt(
+        `This is a recurring meeting (${summarizeRecurrence(meeting.recurrence_rule, meeting.start_at) || "Recurring"}).\n\n` +
+          `What do you want to cancel?\n` +
+          `- Type "this" to skip only the occurrence on ${occurrenceDate}\n` +
+          `- Type "series" to cancel the whole meeting series\n` +
+          `- Leave empty or Cancel to abort`,
+        "this",
+      );
+      const normalized = (choice || "").trim().toLowerCase();
+      if (!normalized) return;
+
+      setBusy(true);
+      setError(null);
+      try {
+        if (normalized === "this") {
+          await meetingService.skipOccurrence(slug, meeting.id, occurrenceDate);
+          await mutate();
+          onChanged?.();
+          onClose();
+        } else if (normalized === "series") {
+          if (!confirm(`Cancel the whole series "${meeting.title}"?`)) {
+            setBusy(false);
+            return;
+          }
+          const reason = window.prompt("Reason (optional):") || undefined;
+          await meetingService.cancel(slug, meeting.id, reason);
+          await mutate();
+          onChanged?.();
+          onClose();
+        } else {
+          setError(`Unknown choice: "${choice}". Type "this" or "series".`);
+        }
+      } catch (e: any) {
+        setError(e?.error || e?.detail || "Cancel failed");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    // Caso non-ricorrente o ricorrente senza contesto occurrence: cancel
+    // del master (tutta la serie se ricorrente).
     if (!confirm(`Cancel meeting "${meeting.title}"?`)) return;
     setBusy(true);
     setError(null);
     try {
-      const reason = prompt("Reason (optional):") || undefined;
+      const reason = window.prompt("Reason (optional):") || undefined;
       await meetingService.cancel(slug, meeting.id, reason);
       await mutate();
       onChanged?.();
@@ -258,7 +369,22 @@ export const MeetingDetailModal = observer(function MeetingDetailModal(props: Pr
   return (
     <>
       <ModalCore
-        isOpen={isOpen}
+        // v1.35a-2a hotfix: quando l'edit modal e' aperto sopra il detail
+        // si scatenano DUE problemi con HeadlessUI Dialog impilati:
+        //  1) cascade-close: click dentro l'edit cade fuori dal Dialog.Panel
+        //     del detail, detail.onClose triggera, l'edit (figlio) smonta.
+        //  2) focus-trap conflict: il focus-trap del detail Dialog ruba
+        //     focus dagli input dell'edit (typing non registra, click
+        //     funziona ma non si puo' digitare).
+        // Soluzione: nascondiamo il detail (isOpen=false) mentre l'edit e'
+        // aperto. Cosi' il Dialog del detail si chiude (release focus
+        // trap + niente outside-click cascade) e il portal viene
+        // smontato dopo la transizione. Quando l'edit si chiude
+        // (setEditOpen(false)), il detail si rimonta automaticamente
+        // grazie al re-render con isOpen=true e SWR mutate ne aggiorna
+        // i dati. Niente flicker visibile perche' isOpen flippa una
+        // volta sola per Edit click.
+        isOpen={isOpen && !editOpen}
         handleClose={() => !busy && onClose()}
         position={EModalPosition.CENTER}
         width={EModalWidth.XXL}
@@ -274,11 +400,30 @@ export const MeetingDetailModal = observer(function MeetingDetailModal(props: Pr
                 <h3 className="text-base font-semibold text-primary truncate">
                   {isLoading ? "Loading..." : meeting?.title || "(meeting)"}
                 </h3>
-                <div className="flex items-center gap-2 mt-0.5">
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                   {meeting && (
                     <span className="text-11 text-secondary flex items-center gap-1">
                       <Clock className="size-3" />
                       {formatRange(meeting)}
+                    </span>
+                  )}
+                  {/* v1.35a-3: indicatore recurrence nel header del detail
+                      modal. summarizeRecurrence converte la RRULE in
+                      "Daily, 5 occurrences" / "Weekly on Monday" / etc. */}
+                  {meeting?.recurrence_rule && (
+                    <span
+                      className="text-11 px-1.5 py-0.5 rounded bg-accent-primary/10 text-accent-primary font-medium flex items-center gap-1"
+                      title={meeting.recurrence_rule}
+                    >
+                      <RefreshCw className="size-2.5" />
+                      {summarizeRecurrence(meeting.recurrence_rule, meeting.start_at) || "Recurring"}
+                    </span>
+                  )}
+                  {/* v1.35a-3: banner "Occurrence of <date>" se il modal e'
+                      stato aperto cliccando su un'occorrenza specifica. */}
+                  {occurrenceDate && (
+                    <span className="text-11 px-1.5 py-0.5 rounded bg-surface-2 text-secondary font-medium">
+                      Occurrence of {occurrenceDate}
                     </span>
                   )}
                   {meeting?.is_cancelled && (

@@ -1486,7 +1486,7 @@ import { Button } from "@plane/propel/button";
 // In workspace views i group_by "state" e "created_by" ora usano
 // workspaceStates / workspaceMemberIds (prima ricadevano su projectStates
 // undefined -> List/KanBan default.tsx restituivano null -> schermo BIANCO).
-const CUSTOM_PATCH_TAG = "PATCHED v1.34h-4";
+const CUSTOM_PATCH_TAG = "PATCHED v1.35a-4";
 
 export const WorkspaceEditionBadge = observer(function WorkspaceEditionBadge() {
   // states
