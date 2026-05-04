@@ -356,6 +356,15 @@ if errorlevel 1 goto :patcherr
 copy /Y "%PATCHES_DIR%\13-meetings\display-filters-selection.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-layouts\filters\header\display-filters\display-filters-selection.tsx" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.34h-4: activity feed entry per link/unlink/cancel meeting.
+REM Backend: meeting-view.py crea sincrono IssueActivity records (gia' patchato
+REM piu' su nella copy step v1.34b/c). Frontend: nuovo componente per il
+REM render + full-replacement activity-list.tsx con case "meeting".
+copy /Y "%PATCHES_DIR%\13-meetings\issue-meeting-activity.tsx" "%PLANE_SRC%\apps\web\core\components\meetings\issue-meeting-activity.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\issue-activity-list.tsx" "%PLANE_SRC%\apps\web\core\components\issues\issue-detail\issue-activity\activity\activity-list.tsx" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.34g: workspace settings page Meetings (audit mode toggle).
 REM   - settings-form: riusa useFeatureSettings (v1.33e) per il flag
 REM     meetings_admin_audit_mode.

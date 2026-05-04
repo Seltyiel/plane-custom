@@ -6,6 +6,36 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.34h-4] - 2026-05-04 (Meetings: activity feed entry per link/unlink/cancel)
+
+### Aggiunto
+- Quando un meeting viene linkato a un task (POST `/issue-links/`), un'entry compare nel feed Activity dell'issue: "L. scheduled meeting *titolo*". Click sul nome del meeting → apre `MeetingDetailModal`.
+- Quando un meeting viene scollegato da un task (DELETE `/issue-links/`), entry analoga con verbo "unlinked meeting *titolo*".
+- Quando un meeting con linked issues viene cancellato (DELETE `/meetings/<id>/`), un'entry "cancelled meeting *titolo*" viene creata su OGNI issue linkato.
+
+### Architettura backend
+- **Approccio chosen**: in `meeting-view.py` creo sincrono `IssueActivity.objects.create(...)` records con `field="meeting"`, `verb="created"|"deleted"|"cancelled"`, `new_value=meeting.title`, `new_identifier=meeting.id`, `comment="scheduled a meeting"|"unlinked a meeting"|"cancelled a linked meeting"`.
+- **NO Celery dispatcher**: il file stock `issue_activities_task.py` (1600+ righe) gestisce le activity tramite Celery + dispatcher di tipi. Avrei dovuto fare full-replacement per registrare un nuovo type "meeting.activity.created", ma il file e' troppo grande e fragile a regressioni upstream. Il sincrono `objects.create()` raggiunge lo stesso risultato (entry creata) con surface molto piu' piccola. Trade-off: niente notification email ai watcher dell'issue. Se servira', migrazione al pattern Celery in v1.34h-4b.
+- Helper `_log_meeting_activity(issue, meeting, verb, comment, actor)` con try/except (non critical-path → swallow su errore).
+
+### Architettura frontend
+- Nuovo componente `IssueMeetingActivity` (`patches/13-meetings/issue-meeting-activity.tsx`):
+  - Replica esatta del pattern `IssueLinkActivity` stock (`IssueActivityBlockComponent` + testo verb-aware).
+  - Icona `Calendar` (Lucide).
+  - Click sul nome del meeting → apre `MeetingDetailModal` (riusa v1.34d).
+- Full-replacement di `activity-list.tsx` (`patches/13-meetings/issue-activity-list.tsx`):
+  - +1 import + 1 `case "meeting"` nello switch del field.
+  - Posizionato prima del `default` fallback per intercettare prima di `AdditionalActivityRoot`.
+
+### File toccati
+- Modificato: `patches/13-meetings/meeting-view.py` (import `IssueActivity`, helper `_log_meeting_activity`, 3 hook nei punti di mutation)
+- Nuovo: `patches/13-meetings/issue-meeting-activity.tsx`
+- Nuovo: `patches/13-meetings/issue-activity-list.tsx` (full-replacement stock)
+- `build.bat`: 2 nuove copy step v1.34h-4
+- `patches/00-core/edition-badge.tsx`: CUSTOM_PATCH_TAG -> v1.34h-4
+
+---
+
 ## [v1.34h-2a] - 2026-05-04 (Meetings: toggle Show/Hide ora effettivamente nasconde i meeting)
 
 ### Fixato

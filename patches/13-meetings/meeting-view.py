@@ -41,7 +41,7 @@ from rest_framework.response import Response
 
 from plane.app.permissions import allow_permission, ROLE
 from plane.app.views.base import BaseAPIView
-from plane.db.models import Issue, ProjectMember, User, Workspace, WorkspaceMember
+from plane.db.models import Issue, IssueActivity, ProjectMember, User, Workspace, WorkspaceMember
 from plane.db.models.meeting import Meeting, MeetingAttendee, MeetingIssueLink
 from plane.db.models.workspace_feature_settings import get_workspace_feature
 
@@ -130,6 +130,35 @@ def _parse_dt(value):
 def _gen_rsvp_token():
     """Token URL-safe 32 char per RSVP via magic link (v1.35b)."""
     return secrets.token_urlsafe(24)
+
+
+def _log_meeting_activity(issue, meeting, verb, comment, actor):
+    """
+    PATCH v1.34h-4: crea sincrono un IssueActivity record per un evento
+    meeting (link/unlink/cancel). Bypass del Celery dispatcher
+    issue_activities_task.py per evitare full-replacement di quel file
+    (1600+ righe stock). Niente notification email ai watcher (in caso
+    serva, si fa migrazione al pattern Celery in v1.34h-4b).
+
+    verb: "created" (linked), "deleted" (unlinked), "cancelled" (meeting
+    cancelled).
+    """
+    try:
+        IssueActivity.objects.create(
+            issue=issue,
+            project_id=issue.project_id,
+            workspace_id=issue.workspace_id,
+            actor=actor,
+            field="meeting",
+            verb=verb,
+            new_value=meeting.title or "",
+            new_identifier=meeting.id,
+            comment=comment,
+            epoch=int(timezone.now().timestamp()),
+        )
+    except Exception:
+        # Activity log non e' critical-path; se fallisce, swallow.
+        pass
 
 
 def _get_visible_meetings(workspace, user):
@@ -394,6 +423,17 @@ class MeetingDetailEndpoint(BaseAPIView):
         # v1.34c: notify cancellation
         _safe_delay(send_meeting_cancel, str(meeting.id), reason)
 
+        # PATCH v1.34h-4: log nell'activity feed di ogni issue linkato.
+        linked_issues = Issue.objects.filter(meeting_links__meeting=meeting).distinct()
+        for linked in linked_issues:
+            _log_meeting_activity(
+                issue=linked,
+                meeting=meeting,
+                verb="cancelled",
+                comment="cancelled a linked meeting",
+                actor=request.user,
+            )
+
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -569,6 +609,14 @@ class MeetingIssueLinksEndpoint(BaseAPIView):
             return Response({"error": "Issue is already linked"}, status=status.HTTP_409_CONFLICT)
 
         link = MeetingIssueLink.objects.create(meeting=meeting, issue=issue)
+        # PATCH v1.34h-4: log nell'activity feed dell'issue.
+        _log_meeting_activity(
+            issue=issue,
+            meeting=meeting,
+            verb="created",
+            comment="scheduled a meeting",
+            actor=request.user,
+        )
         return Response(MeetingIssueLinkSerializer(link).data, status=status.HTTP_201_CREATED)
 
     @allow_permission([ROLE.ADMIN, ROLE.MEMBER], level="WORKSPACE")
@@ -587,11 +635,22 @@ class MeetingIssueLinksEndpoint(BaseAPIView):
             return Response({"error": "Only the meeting creator can manage issue links"}, status=status.HTTP_403_FORBIDDEN)
 
         try:
-            link = MeetingIssueLink.objects.get(pk=link_id, meeting=meeting)
+            link = MeetingIssueLink.objects.select_related("issue").get(pk=link_id, meeting=meeting)
         except MeetingIssueLink.DoesNotExist:
             return Response({"error": "Link not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        # PATCH v1.34h-4: snapshot pre-delete per logging activity.
+        unlinked_issue = link.issue
         link.delete()
+        # Log nell'activity feed dell'issue.
+        if unlinked_issue is not None:
+            _log_meeting_activity(
+                issue=unlinked_issue,
+                meeting=meeting,
+                verb="deleted",
+                comment="unlinked a meeting",
+                actor=request.user,
+            )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
