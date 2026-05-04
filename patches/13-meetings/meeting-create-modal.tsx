@@ -172,7 +172,8 @@ export const MeetingCreateModal = observer(function MeetingCreateModal(props: Pr
   };
 
   const inputClass =
-    "w-full rounded-md border border-custom-border-200 bg-custom-background-100 px-2.5 py-1.5 text-sm text-custom-text-100 placeholder:text-custom-text-400 focus:outline-none focus:border-custom-primary-100";
+    "w-full rounded-md border border-subtle bg-surface-1 px-2.5 py-1.5 text-13 text-primary placeholder:text-placeholder focus:outline-none focus:border-accent-primary";
+  const labelClass = "text-body-xs-medium text-secondary mb-1 block";
 
   return (
     <ModalCore
@@ -185,15 +186,17 @@ export const MeetingCreateModal = observer(function MeetingCreateModal(props: Pr
           si chiuda quando l'utente clicca dentro la modale. Vedi
           usePeekOverviewOutsideClickDetector hook stock. */}
       <form onSubmit={handleSubmit} data-prevent-outside-click="meeting-modal">
-        <div className="flex items-center justify-between p-4 border-b border-custom-border-200">
-          <h3 className="flex items-center gap-2 text-base font-semibold text-custom-text-100">
-            <Calendar className="size-4 text-custom-text-300" />
+        <div className="flex items-center justify-between p-4 border-b border-subtle">
+          <h3 className="flex items-center gap-2 text-base font-semibold text-primary">
+            <div className="size-7 rounded-md bg-accent-primary/10 flex items-center justify-center flex-shrink-0">
+              <Calendar className="size-4 text-accent-primary" />
+            </div>
             {mode === "edit" ? "Edit meeting" : "Create meeting"}
           </h3>
           <button
             type="button"
             onClick={onClose}
-            className="text-custom-text-300 hover:text-custom-text-100"
+            className="text-secondary hover:text-primary"
             aria-label="Close"
           >
             <X className="size-4" />
@@ -202,7 +205,7 @@ export const MeetingCreateModal = observer(function MeetingCreateModal(props: Pr
 
         <div className="p-4 space-y-4">
           <div>
-            <label className="text-xs font-medium text-custom-text-200 mb-1 block">Title *</label>
+            <label className={labelClass}>Title *</label>
             <input
               type="text"
               value={title}
@@ -214,7 +217,7 @@ export const MeetingCreateModal = observer(function MeetingCreateModal(props: Pr
           </div>
 
           <div>
-            <label className="text-xs font-medium text-custom-text-200 mb-1 block">Description</label>
+            <label className={labelClass}>Description</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -226,7 +229,7 @@ export const MeetingCreateModal = observer(function MeetingCreateModal(props: Pr
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-custom-text-200 mb-1 block">Start *</label>
+              <label className={labelClass}>Start *</label>
               <input
                 type={allDay ? "date" : "datetime-local"}
                 value={allDay ? startAt.slice(0, 10) : startAt}
@@ -237,7 +240,7 @@ export const MeetingCreateModal = observer(function MeetingCreateModal(props: Pr
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-custom-text-200 mb-1 block">End *</label>
+              <label className={labelClass}>End *</label>
               <input
                 type={allDay ? "date" : "datetime-local"}
                 value={allDay ? endAt.slice(0, 10) : endAt}
@@ -256,11 +259,11 @@ export const MeetingCreateModal = observer(function MeetingCreateModal(props: Pr
               onChange={(e) => setAllDay(e.target.checked)}
               className="size-3.5 rounded"
             />
-            <span className="text-xs text-custom-text-200">All-day event</span>
+            <span className="text-13 text-secondary">All-day event</span>
           </label>
 
           <div>
-            <label className="text-xs font-medium text-custom-text-200 mb-1 block">Location</label>
+            <label className={labelClass}>Location</label>
             <input
               type="text"
               value={location}
@@ -272,7 +275,7 @@ export const MeetingCreateModal = observer(function MeetingCreateModal(props: Pr
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-medium text-custom-text-200 mb-1 block">Reminder (min)</label>
+              <label className={labelClass}>Reminder (min)</label>
               <input
                 type="number"
                 min={0}
@@ -283,7 +286,7 @@ export const MeetingCreateModal = observer(function MeetingCreateModal(props: Pr
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-custom-text-200 mb-1 block">Project</label>
+              <label className={labelClass}>Project</label>
               <select
                 value={projectId}
                 onChange={(e) => setProjectId(e.target.value)}
@@ -300,11 +303,11 @@ export const MeetingCreateModal = observer(function MeetingCreateModal(props: Pr
           </div>
 
           {error && (
-            <div className="text-xs text-red-600 bg-red-50 px-2 py-1.5 rounded">{error}</div>
+            <div className="text-11 text-danger-primary bg-danger-primary/10 px-2 py-1.5 rounded">{error}</div>
           )}
         </div>
 
-        <div className="flex justify-end gap-2 p-4 border-t border-custom-border-200">
+        <div className="flex justify-end gap-2 p-4 border-t border-subtle">
           <Button variant="neutral-primary" size="sm" onClick={onClose} disabled={submitting}>
             Cancel
           </Button>

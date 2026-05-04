@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  * See the LICENSE file for details.
  *
- * PATCH (plane-custom) v1.33f:
- *  Aggiunto WORKSPACE_SETTINGS["time-tracking"] e inserito nella
- *  categoria FEATURES (con eventuali altre future feature toggle).
+ * PATCH (plane-custom) v1.33f + v1.34g:
+ *  - v1.33f: aggiunto WORKSPACE_SETTINGS["time-tracking"] in FEATURES.
+ *  - v1.34g: aggiunto WORKSPACE_SETTINGS["meetings"] in FEATURES.
  *  Estende v1.20d (states).
  */
 
@@ -57,6 +57,15 @@ export const WORKSPACE_SETTINGS: Record<TWorkspaceSettingsTabs, TWorkspaceSettin
     highlight: (pathname: string, baseUrl: string) =>
       pathname === `${baseUrl}/settings/time-tracking/`,
   },
+  // PATCH v1.34g: meetings settings (audit mode toggle).
+  meetings: {
+    key: "meetings",
+    i18n_label: "Meetings",
+    href: `/settings/meetings`,
+    access: [EUserWorkspaceRoles.ADMIN, EUserWorkspaceRoles.MEMBER],
+    highlight: (pathname: string, baseUrl: string) =>
+      pathname === `${baseUrl}/settings/meetings/`,
+  },
   "billing-and-plans": {
     key: "billing-and-plans",
     i18n_label: "workspace_settings.settings.billing_and_plans.title",
@@ -86,6 +95,7 @@ export const WORKSPACE_SETTINGS_ACCESS = Object.fromEntries(
 
 // PATCH v1.20d: states inserito accanto a general/members.
 // PATCH v1.33f: time-tracking inserito nella sezione FEATURES.
+// PATCH v1.34g: meetings inserito nella sezione FEATURES (sotto time-tracking).
 export const GROUPED_WORKSPACE_SETTINGS: Record<WORKSPACE_SETTINGS_CATEGORY, TWorkspaceSettingsItem[]> = {
   [WORKSPACE_SETTINGS_CATEGORY.ADMINISTRATION]: [
     WORKSPACE_SETTINGS["general"],
@@ -94,6 +104,9 @@ export const GROUPED_WORKSPACE_SETTINGS: Record<WORKSPACE_SETTINGS_CATEGORY, TWo
     WORKSPACE_SETTINGS["billing-and-plans"],
     WORKSPACE_SETTINGS["export"],
   ],
-  [WORKSPACE_SETTINGS_CATEGORY.FEATURES]: [WORKSPACE_SETTINGS["time-tracking"]],
+  [WORKSPACE_SETTINGS_CATEGORY.FEATURES]: [
+    WORKSPACE_SETTINGS["time-tracking"],
+    WORKSPACE_SETTINGS["meetings"],
+  ],
   [WORKSPACE_SETTINGS_CATEGORY.DEVELOPER]: [WORKSPACE_SETTINGS["webhooks"]],
 };

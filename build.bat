@@ -348,6 +348,27 @@ REM cliccando un task da una list/board/calendar view).
 copy /Y "%PATCHES_DIR%\13-meetings\peek-overview-properties.tsx" "%PLANE_SRC%\apps\web\core\components\issues\peek-overview\properties.tsx" >nul
 if errorlevel 1 goto :patcherr
 
+REM PATCH v1.34g: workspace settings page Meetings (audit mode toggle).
+REM   - settings-form: riusa useFeatureSettings (v1.33e) per il flag
+REM     meetings_admin_audit_mode.
+REM   - page + header: pattern v1.33f time-tracking-settings.
+REM   - tab "meetings" registrata via constants-settings-workspace.ts esteso
+REM     in v1.33f (FEATURES section) - copy step gia' presente piu' su.
+REM   - Routes: route /settings/meetings/ aggiunta in routes-core.ts esteso
+REM     in v1.34d - copy step gia' presente piu' su.
+if not exist "%PLANE_SRC%\apps\web\core\components\workspace-meetings" (
+    mkdir "%PLANE_SRC%\apps\web\core\components\workspace-meetings"
+)
+copy /Y "%PATCHES_DIR%\13-meetings\meetings-settings-form.tsx" "%PLANE_SRC%\apps\web\core\components\workspace-meetings\settings-form.tsx" >nul
+if errorlevel 1 goto :patcherr
+> "%PLANE_SRC%\apps\web\core\components\workspace-meetings\index.ts" echo export * from "./settings-form";
+
+mkdir "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(settings)\settings\(workspace)\meetings" 2>nul
+copy /Y "%PATCHES_DIR%\13-meetings\meetings-settings-page.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(settings)\settings\(workspace)\meetings\page.tsx" >nul
+if errorlevel 1 goto :patcherr
+copy /Y "%PATCHES_DIR%\13-meetings\meetings-settings-header.tsx" "%PLANE_SRC%\apps\web\app\(all)\[workspaceSlug]\(settings)\settings\(workspace)\meetings\header.tsx" >nul
+if errorlevel 1 goto :patcherr
+
 REM PATCH v1.34f: Calendar overlay - meetings nelle Calendar view stock.
 REM   - meetings-calendar-context.tsx: provider+hook per fetchare 1 volta i
 REM     meeting del range mese visibile e indexarli per giorno.

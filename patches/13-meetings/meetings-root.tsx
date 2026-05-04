@@ -52,13 +52,17 @@ const getMyAttendee = (m: IMeeting, userId: string | undefined): IMeetingAttende
 
 const StatusPill = ({ status }: { status: string }) => {
   const styles: Record<string, string> = {
-    accepted: "bg-green-100 text-green-800",
-    tentative: "bg-yellow-100 text-yellow-800",
-    declined: "bg-red-100 text-red-800",
-    invited: "bg-blue-100 text-blue-800",
+    accepted: "bg-success-primary/10 text-success-primary",
+    tentative: "bg-warning-primary/10 text-warning-primary",
+    declined: "bg-danger-primary/10 text-danger-primary",
+    invited: "bg-accent-primary/10 text-accent-primary",
   };
   return (
-    <span className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${styles[status] || "bg-gray-100 text-gray-700"}`}>
+    <span
+      className={`inline-block rounded px-2 py-0.5 text-11 font-medium ${
+        styles[status] || "bg-surface-2 text-secondary"
+      }`}
+    >
       {status}
     </span>
   );
@@ -93,48 +97,52 @@ export const MeetingsRoot = observer(function MeetingsRoot() {
       <tr
         key={m.id}
         onClick={() => setSelectedMeetingId(m.id)}
-        className="cursor-pointer border-b border-custom-border-200 hover:bg-custom-background-90 transition-colors"
+        className="cursor-pointer border-b border-subtle hover:bg-surface-2 transition-colors"
       >
         <td className="px-3 py-3 align-middle">
           <div className="flex items-center gap-2">
-            <Calendar className="size-4 text-custom-text-300 flex-shrink-0" />
-            <div>
-              <div className="font-medium text-custom-text-100">{m.title}</div>
+            <Calendar className="size-3.5 text-secondary flex-shrink-0" />
+            <div className="min-w-0">
+              <div className="text-13 font-medium text-primary truncate">{m.title}</div>
               {m.is_audit_only && (
-                <div className="text-[11px] text-yellow-700 mt-0.5">audit-only</div>
+                <div className="text-11 text-warning-primary mt-0.5">audit-only</div>
               )}
               {m.is_cancelled && (
-                <div className="text-[11px] text-red-700 mt-0.5">cancelled</div>
+                <div className="text-11 text-danger-primary mt-0.5">cancelled</div>
               )}
             </div>
           </div>
         </td>
-        <td className="px-3 py-3 align-middle text-sm text-custom-text-200">
+        <td className="px-3 py-3 align-middle text-13 text-secondary">
           <div className="flex items-center gap-1.5">
-            <Clock className="size-3.5 text-custom-text-300" />
+            <Clock className="size-3.5 text-placeholder" />
             {formatRange(m)}
           </div>
         </td>
-        <td className="px-3 py-3 align-middle text-sm text-custom-text-200">
+        <td className="px-3 py-3 align-middle text-13 text-secondary">
           {m.location ? (
             <div className="flex items-center gap-1.5">
-              <MapPin className="size-3.5 text-custom-text-300" />
+              <MapPin className="size-3.5 text-placeholder" />
               <span className="truncate max-w-[200px]">{m.location}</span>
             </div>
           ) : (
-            <span className="text-custom-text-400">-</span>
+            <span className="text-placeholder">—</span>
           )}
         </td>
-        <td className="px-3 py-3 align-middle text-sm">
+        <td className="px-3 py-3 align-middle text-13 text-secondary">
           <div className="flex items-center gap-1.5">
-            <Users className="size-3.5 text-custom-text-300" />
+            <Users className="size-3.5 text-placeholder" />
             {attendeeCount}
           </div>
         </td>
         <td className="px-3 py-3 align-middle">
-          {me ? <StatusPill status={me.status} /> : <span className="text-custom-text-400 text-xs">-</span>}
+          {me ? (
+            <StatusPill status={me.status} />
+          ) : (
+            <span className="text-placeholder text-11">—</span>
+          )}
         </td>
-        <td className="px-3 py-3 align-middle text-xs text-custom-text-300">
+        <td className="px-3 py-3 align-middle text-11 text-secondary">
           {isCreator ? "you" : m.creator_display_name || ""}
         </td>
       </tr>
@@ -144,16 +152,16 @@ export const MeetingsRoot = observer(function MeetingsRoot() {
   const renderTable = (rows: IMeeting[], emptyLabel: string) => {
     if (rows.length === 0) {
       return (
-        <div className="text-center text-custom-text-300 text-sm py-8 border border-dashed border-custom-border-200 rounded-md">
+        <div className="text-center text-secondary text-13 py-8 border border-dashed border-subtle rounded-md">
           {emptyLabel}
         </div>
       );
     }
     return (
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto rounded-md border border-subtle bg-surface-1">
         <table className="w-full border-collapse">
           <thead>
-            <tr className="border-b border-custom-border-300 text-left text-xs uppercase text-custom-text-300">
+            <tr className="border-b border-subtle text-left text-11 uppercase text-secondary">
               <th className="px-3 py-2 font-medium">Title</th>
               <th className="px-3 py-2 font-medium">When</th>
               <th className="px-3 py-2 font-medium">Location</th>
@@ -172,8 +180,8 @@ export const MeetingsRoot = observer(function MeetingsRoot() {
     <div className="p-6 h-full">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-base font-semibold text-custom-text-100">Meetings</h2>
-          <p className="text-xs text-custom-text-300 mt-0.5">
+          <h2 className="text-base font-semibold text-primary">Meetings</h2>
+          <p className="text-11 text-secondary mt-0.5">
             {isLoading ? "Loading..." : `${meetings.length} total`}
           </p>
         </div>
@@ -189,11 +197,11 @@ export const MeetingsRoot = observer(function MeetingsRoot() {
 
       <div className="space-y-6">
         <section>
-          <h3 className="text-xs font-semibold text-custom-text-200 uppercase mb-2">Upcoming</h3>
+          <h3 className="text-body-xs-medium text-secondary uppercase mb-2">Upcoming</h3>
           {renderTable(upcoming, "No upcoming meetings")}
         </section>
         <section>
-          <h3 className="text-xs font-semibold text-custom-text-200 uppercase mb-2">Past / Cancelled</h3>
+          <h3 className="text-body-xs-medium text-secondary uppercase mb-2">Past / Cancelled</h3>
           {renderTable(past, "No past meetings")}
         </section>
       </div>

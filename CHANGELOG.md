@@ -6,6 +6,104 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.34g] - 2026-05-02 (Meetings MVP slice 7: workspace settings page)
+
+### Aggiunto
+- **Pagina settings `/<slug>/settings/meetings/`** workspace-level con toggle "Audit mode for workspace admins":
+  - Quando ON, i workspace admin vedono i meeting di altri (a cui non sono attendee) tramite `MeetingLightSerializer` (solo title + start/end + attendee count, NO description/attendee names/location). Per compliance/audit.
+  - Quando OFF (default), ogni utente vede solo i meeting di cui e' creator o attendee.
+  - Solo workspace admin puo' modificare; member/guest vedono read-only banner.
+- **`MeetingsSettingsForm`**: riusa `useFeatureSettings(workspaceSlug)` (v1.33e generic), legge/scrive il flag `meetings_admin_audit_mode` via `WorkspaceFeatureSettingsEndpoint`. Stesso pattern Row di `time-tracking-settings-form` (v1.33f) per coerenza visiva.
+- **Sidebar settings entry "Meetings"** in sezione FEATURES (sotto "Time tracking"). Icon `Calendar`. Esteso `constants-settings-workspace.ts` + `sidebar-item-icon.tsx` + `types-settings.ts`.
+- **Route `/<slug>/settings/meetings/`** registrata in `routes-core.ts`.
+
+### File toccati
+- Nuovi: `patches/13-meetings/meetings-settings-form.tsx`, `meetings-settings-page.tsx`, `meetings-settings-header.tsx`
+- Modificati (estesi v1.33f):
+  - `patches/12-time-tracking/types-settings.ts` (TWorkspaceSettingsTabs += "meetings")
+  - `patches/12-time-tracking/constants-settings-workspace.ts` (WORKSPACE_SETTINGS["meetings"] + GROUPED_WORKSPACE_SETTINGS.FEATURES += meetings)
+  - `patches/12-time-tracking/sidebar-item-icon.tsx` (Calendar icon mapping)
+  - `patches/12-time-tracking/routes-core.ts` (route /settings/meetings)
+- `build.bat`: 3 nuove copy step v1.34g (form + page + header) + index.ts re-export
+- `patches/00-core/edition-badge.tsx`: CUSTOM_PATCH_TAG -> v1.34g
+
+### Niente backend changes
+La feature flag `meetings_admin_audit_mode` era gia' supportata da v1.34b (`get_workspace_feature(workspace, "meetings_admin_audit_mode", False)` in meeting-view.py). v1.34g aggiunge solo l'UI per il toggle.
+
+### Cosa rimane fuori dall'MVP (rinviato)
+- Per-user reminder default in Profile (richiede toccare profile preferences store, surface piu' grande). v1.34h se servisse.
+- v1.35: RRULE recurrence + magic link RSVP per external + conflict detection + CSV export.
+- Activity feed entry per linkare/cancellare meeting (rimandato a v1.34h).
+
+---
+
+## [v1.34f-2] - 2026-05-02 (Meetings: detail modal + list + create modal Plane-native layout)
+
+### Cambiato
+- **Detail modal** completamente riscritto con asset Plane stock:
+  - Header pulito: icona Calendar in box `size-8 rounded-md bg-accent-primary/10`, titolo `text-base font-semibold text-primary`, subtitle inline con range orario + badge cancelled/audit-only.
+  - Sezione "Properties" con `<SidebarPropertyListItem>` (asset stock) per Organizer (`UserCirclePropertyIcon`), When (`StartDatePropertyIcon`), Location (Lucide MapPin), Reminder (Lucide Bell). Stesso pattern visuale del sidebar issue stock.
+  - Sezione "Your RSVP" con header `text-body-xs-medium` + StatusBadge a destra + button group sotto.
+  - Sezione "Attendees" con header che include `MembersPropertyIcon` (asset stock) + count + "+ Add" inline. Avatar interni renderizzati con `<ButtonAvatars>` (asset stock di Plane), avatar esterni con fallback iniziali in box `bg-surface-2`.
+  - Sezione "Linked work items" con icon `Link2` + project_identifier in `font-mono` per look codice.
+- **List page (/meetings/)**: tabella riscritta con palette semantica:
+  - Wrapper `rounded-md border border-subtle bg-surface-1`.
+  - Header `text-11 uppercase text-secondary`.
+  - Righe `border-b border-subtle hover:bg-surface-2`.
+  - Cells `text-13`, icon `text-placeholder`, label `text-secondary`, primary text `text-primary`.
+  - Empty state `border border-dashed border-subtle`.
+- **Create/Edit modal**: stesso refresh:
+  - Header con icona in box accent-primary/10.
+  - Input class condivisa `border-subtle bg-surface-1 focus:border-accent-primary`.
+  - Label class condivisa `text-body-xs-medium text-secondary`.
+  - Border separatori `border-subtle`.
+  - Error inline `bg-danger-primary/10`.
+
+### Asset Plane stock riusati
+- `SidebarPropertyListItem` (`@/components/common/layout/sidebar/property-list-item`)
+- `ButtonAvatars` (`@/components/dropdowns/member/avatar`)
+- `UserCirclePropertyIcon`, `StartDatePropertyIcon`, `MembersPropertyIcon` (`@plane/propel/icons`)
+- `Button` (`@plane/propel/button`) con varianti stock
+- `ModalCore` + `EModalPosition` + `EModalWidth` (`@plane/ui`)
+- Palette: `bg-surface-1/2`, `border-subtle`, `text-primary/secondary/placeholder`, `text-13/11`, `text-body-xs-medium`, `bg-accent-primary/10`, `bg-success-primary/10`, ecc.
+
+### File toccati
+- `patches/13-meetings/meeting-detail-modal.tsx` (riscritto)
+- `patches/13-meetings/meeting-create-modal.tsx`
+- `patches/13-meetings/meetings-root.tsx`
+- `patches/00-core/edition-badge.tsx`: CUSTOM_PATCH_TAG -> v1.34f-2
+
+---
+
+## [v1.34f-1] - 2026-05-02 (Meetings: palette Plane semantica + Calendar block omogeneo)
+
+### Fixato
+- **Meeting block nel Calendar**: i miei chip blu generici (`bg-blue-50` + `border-blue-200`) erano stilisticamente fuori contesto rispetto agli issue card stock. Riscritto `CalendarMeetingBlocks` replicando ESATTAMENTE la struttura visuale di `CalendarIssueBlock` stock:
+  - `bg-surface-1 hover:bg-surface-2` (palette Plane invece di blu Tailwind)
+  - `h-10 md:h-8` altezza fissa (allineata agli issue card)
+  - `rounded-sm border-b border-subtle md:border-[1px]` (border identico)
+  - `text-13 md:text-11` typography Plane
+  - Stripe verticale colorata (`w-0.5`, `bg-accent-primary`) — uso il blu accent Plane per distinguere visivamente il meeting dall'issue (che usa lo state color del progetto). Stesso pattern di `<span style={{backgroundColor: stateColor}} />` stock ma con classe semantica.
+  - Icona Calendar piccola accanto allo stripe.
+  - Ora di start (formattata) come "identifier" (analogo a O-17 sequence id).
+  - Titolo truncated.
+  - RSVP status dot (`size-1.5 rounded-full`) solo se diverso da accepted (default ok), con palette success/warning/danger.
+- **Detail modal e List page**: sostituiti TUTTI i colori Tailwind generici (`bg-green-100`, `text-red-700`, `bg-yellow-100`, `text-blue-800`, etc.) con la palette semantica Plane:
+  - `bg-success-primary/10 text-success-primary` (accepted)
+  - `bg-warning-primary/10 text-warning-primary` (tentative, audit-only)
+  - `bg-danger-primary/10 text-danger-primary` (declined, cancelled, error)
+  - `bg-accent-primary/10 text-accent-primary` (invited)
+- Typography: `text-[11px]` -> `text-11` (Plane semantic typography token).
+
+### File toccati
+- `patches/13-meetings/calendar-meeting-blocks.tsx` (riscritto seguendo pattern CalendarIssueBlock stock)
+- `patches/13-meetings/meeting-detail-modal.tsx`
+- `patches/13-meetings/meeting-create-modal.tsx`
+- `patches/13-meetings/meetings-root.tsx`
+- `patches/00-core/edition-badge.tsx`: CUSTOM_PATCH_TAG -> v1.34f-1
+
+---
+
 ## [v1.34f] - 2026-05-02 (Meetings MVP slice 6: overlay nelle Calendar view stock)
 
 ### Aggiunto

@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  * See the LICENSE file for details.
  *
- * PATCH (plane-custom) v1.19 + v1.33f + v1.34d:
+ * PATCH (plane-custom) v1.19 + v1.33f + v1.34d + v1.34g:
  *  - v1.19: People page (/people).
  *  - v1.33f: Timesheet (/timesheet) + Time tracking settings (/settings/time-tracking).
  *  - v1.34d: Meetings page (/meetings).
+ *  - v1.34g: Meetings settings (/settings/meetings).
  */
 
 import { index, layout, route } from "@react-router/dev/routes";
@@ -242,6 +243,11 @@ export const coreRoutes: RouteConfigEntry[] = [
           route(
             ":workspaceSlug/settings/time-tracking",
             "./(all)/[workspaceSlug]/(settings)/settings/(workspace)/time-tracking/page.tsx"
+          ),
+          // PATCH v1.34g: Meetings settings.
+          route(
+            ":workspaceSlug/settings/meetings",
+            "./(all)/[workspaceSlug]/(settings)/settings/(workspace)/meetings/page.tsx"
           ),
         ]),
 
