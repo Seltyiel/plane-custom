@@ -6,6 +6,26 @@ La fonte di verita' alternativa e' il commento storico in `patches/00-core/editi
 
 ---
 
+## [v1.34h-1] - 2026-05-04 (Meetings: multi-day events nel Calendar overlay)
+
+### Cambiato
+- `MeetingsCalendarProvider` (`meetings-calendar-context.tsx`): il `byDate` Map ora indexa ogni meeting su TUTTI i giorni che copre (cursor da `start_at` a `end_at` midnight locale, incluso). Prima: solo il giorno di `start_at`.
+- Esempio: un meeting `04/05 12:00 → 06/05 14:00` ora appare nei chip dei giorni 04, 05 e 06. Prima appariva solo il 04.
+- Cap di safety a 30 giorni per meeting con `end_at` malformato (evita loop infiniti).
+- Edge case: `end_at` invalid → fallback a 1 solo giorno (start).
+
+### Note design
+Il chip nel calendar mostra l'ora di start in TUTTI i giorni (anche middle/end). Ridondante ma semplice. Marker "continues" / "all-day band" possono essere aggiunti in futuro per distinguere primo/middle/ultimo giorno.
+
+### File toccati
+- Modificato: `patches/13-meetings/meetings-calendar-context.tsx` (single-file change isolato)
+- `patches/00-core/edition-badge.tsx`: CUSTOM_PATCH_TAG -> v1.34h-1
+
+### Nota su precedente tentativo fallito
+Il primo tentativo v1.34h (1+2+3 in bundle) aveva introdotto errori React #418/#423 che hanno corrotto la UI. Le modifiche v1.34h-2 (toggle Show meetings + backend UserMeetingPreference) e v1.34h-3 (per-user reminder default) sono state stashed (`git stash@{0}`) e verranno reintrodotte una alla volta in iterazioni isolate dopo aver verificato la stabilita' di v1.34h-1.
+
+---
+
 ## [v1.34g] - 2026-05-02 (Meetings MVP slice 7: workspace settings page)
 
 ### Aggiunto

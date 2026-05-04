@@ -62,9 +62,14 @@ export function MeetingsCalendarProvider({
 
   const { meetings, isLoading } = useMeetings(workspaceSlug, filters);
 
-  // Map: ISO date string YYYY-MM-DD -> meeting[]. Indexato per start_at.
+  // Map: ISO date string YYYY-MM-DD -> meeting[].
+  // PATCH v1.34h-1: multi-day events. Per ogni meeting cicliamo dal giorno
+  // di start_at al giorno di end_at (inclusi, midnight locale), e indexiamo
+  // il meeting su ogni giorno coperto. Cosi' un meeting da 04/05 12:00 a
+  // 06/05 14:00 appare nelle celle 04, 05 e 06.
   const byDate = useMemo(() => {
     const map = new Map<string, IMeeting[]>();
+    const MAX_DAYS = 30; // safety cap per meeting con end_at malformato
     for (const m of meetings) {
       // Skip cancelled meetings nella vista calendar (rimangono visibili
       // solo nel detail modal o nella pagina /meetings/ tab "past/cancelled").
@@ -72,14 +77,30 @@ export function MeetingsCalendarProvider({
       // Skip audit-only entries (admin con feature flag): non sono meeting
       // dell'utente ma metadata di altri, niente render in calendar.
       if (m.is_audit_only) continue;
-      const start = new Date(m.start_at);
-      // Usiamo la chiave locale del giorno per allineare con
-      // renderFormattedPayloadDate(date) che ritorna YYYY-MM-DD locale.
-      const key = renderFormattedPayloadDate(start) || "";
-      if (!key) continue;
-      const arr = map.get(key);
-      if (arr) arr.push(m);
-      else map.set(key, [m]);
+
+      const startMs = new Date(m.start_at).getTime();
+      const endMs = new Date(m.end_at).getTime();
+      if (Number.isNaN(startMs)) continue;
+
+      // Cursore al midnight del giorno di start (locale).
+      const cursor = new Date(m.start_at);
+      cursor.setHours(0, 0, 0, 0);
+      // End-day al midnight (incluso). Se end_at e' invalid, fallback a 1
+      // solo giorno (start day).
+      const endCursor = new Date(Number.isNaN(endMs) ? startMs : m.end_at);
+      endCursor.setHours(0, 0, 0, 0);
+
+      let safety = 0;
+      while (cursor.getTime() <= endCursor.getTime() && safety < MAX_DAYS) {
+        const key = renderFormattedPayloadDate(cursor) || "";
+        if (key) {
+          const arr = map.get(key);
+          if (arr) arr.push(m);
+          else map.set(key, [m]);
+        }
+        cursor.setDate(cursor.getDate() + 1);
+        safety += 1;
+      }
     }
     // Sort per ora di start dentro lo stesso giorno
     for (const arr of map.values()) {
