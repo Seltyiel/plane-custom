@@ -2,7 +2,7 @@
 
 > Versione 1.0 — setup di un host Windows Server con Hyper-V che ospita N VM Ubuntu, una per azienda cliente. Ogni VM esegue il proprio stack Plane indipendente con Tailnet dedicato.
 >
-> **Scenario corrente**: 2 aziende, 15 utenti ciascuna, host con SSD SATA + HDD.
+> **Scenario corrente**: 2 aziende, 15 utenti ciascuna, host con 2 dischi (un SSD piccolo per Windows + un disco più grande SSD/HDD per le VM e i backup locali).
 
 Questo documento copre il setup dell'**host fisico e infrastruttura virtualizzazione**. Per il setup applicativo di una **singola istanza Plane dentro una VM**, vedi `DEPLOYMENT.md` (a cui questo doc rimanda dove serve).
 
@@ -56,9 +56,9 @@ Questo documento copre il setup dell'**host fisico e infrastruttura virtualizzaz
 │  │   - health-check.ps1 (status VM + container)          │     │
 │  │                                                        │     │
 │  │  Storage:                                              │     │
-│  │   D:\VMs\plane-aziendaA.vhdx  (SSD SATA)              │     │
-│  │   D:\VMs\plane-aziendaB.vhdx  (SSD SATA)              │     │
-│  │   E:\Snapshots\* (HDD lento, snapshot e backup local) │     │
+│  │   E:\VMs\plane-aziendaA\*.vhdx (disco grande)         │     │
+│  │   E:\VMs\plane-aziendaB\*.vhdx (disco grande)         │     │
+│  │   E:\Snapshots\* (snapshot e backup locali)           │     │
 │  └───────────────────────────────────────────────────────┘     │
 │                                                                 │
 │         Router LAN ─── Internet (per Tailscale uscente)        │
@@ -93,7 +93,7 @@ Get-PhysicalDisk | Format-Table FriendlyName, MediaType, Size
 **Requisiti minimi confermati:**
 - CPU: 6+ core fisici / 12+ thread, supporto Intel VT-x / AMD-V (richiesto per Hyper-V — quasi sempre presente da 10 anni a questa parte)
 - RAM: 32+ GB (16 sono troppo stretti per 2 VM da 12 GB ciascuna + Windows host che si prende 4-6 GB)
-- Disco: SSD SATA 500+ GB (per OS + 2 VM) + HDD 1+ TB (per snapshot + backup locali)
+- Disco: idealmente 1 SSD da 256+ GB per Windows + 1 SSD/HDD da 500+ GB per le VM e backup locali. Se hai un solo disco da 1 TB, OK lo stesso (vedi Parte D per layout). Setup minimo verificato: SSD 120 GB (Windows) + SSD 480 GB (VMs).
 
 > ⚠ **Verifica supporto virtualizzazione hardware**: nel BIOS, abilita "Intel Virtualization Technology (VT-x)" o "AMD-V". Spesso è disabilitato di default. Senza di esso Hyper-V rifiuta di avviare le VM.
 
@@ -139,7 +139,7 @@ Sul tuo PC Windows attuale:
 3. **Installa ora** → inserisci product key (o "I don't have a product key" se vuoi attivare dopo).
 4. **Edizione**: scegli **Windows Server 2022 Standard (Desktop Experience)**. ⚠ NON scegliere "Server Core" (no GUI, gestione solo da PowerShell — più ostico se è la prima volta).
 5. **Tipo install**: "Custom: Install Microsoft Server Operating System only".
-6. **Disco**: seleziona l'**SSD SATA**. Se ha partizioni vecchie, eliminale tutte e crea una nuova "New" → installa.
+6. **Disco**: seleziona l'**SSD più piccolo** (quello su cui ospiterai solo Windows + Hyper-V management). Le VM andranno sul disco più grande. Se ha partizioni vecchie, eliminale tutte e crea una nuova "New" → installa.
 7. Aspetta ~15-20 min per l'install.
 8. **Password Administrator**: scegli una forte (gestore password). Non perderla — senza non rientri.
 9. Login con utente **Administrator** + password.
@@ -280,32 +280,32 @@ Le VM useranno il router come DNS di default. Se vuoi che l'host Windows abbia u
 
 ## Parte D — Storage layout
 
-### D.1 Inizializzare l'HDD secondario
+### D.1 Inizializzare il secondo disco
 
-Per default Windows non monta il secondo disco. Apri **Disk Management** (Win+X → Disk Management).
+Per default Windows monta solo il disco di sistema. Apri **Disk Management** (Win+X → Disk Management).
 
 Vedi 2 dischi:
-- **Disk 0** (SSD SATA): C:\ (Windows + dati attuali)
-- **Disk 1** (HDD): "Unallocated" o "Offline"
+- **Disco di sistema** (più piccolo, in genere 120-256 GB): contiene `C:\` con Windows
+- **Secondo disco** (più grande, 480+ GB): "Unallocated" o "Offline" — è qui che andranno le VM e i backup locali
 
-Click destro sul Disk 1:
+> ⚠ Importante: le VM finiscono sul **disco più grande**, non su `C:\`. Il disco di sistema è troppo piccolo per ospitare 2+ VM da 40-100 GB ciascuna. Anche se entrambi i tuoi dischi sono SSD, le VM vanno comunque sul più grande per avere spazio.
+
+Click destro sul secondo disco:
 - Se è "Offline" → "Online".
-- Click destro sullo spazio "Unallocated" → "New Simple Volume" → Next → assegna lettera **E:\** → format come **NTFS** con label "Backup" → Next → Finish.
+- Click destro sullo spazio "Unallocated" → "New Simple Volume" → Next → assegna lettera **E:\** → format come **NTFS** con label `Storage` (o `Data`) → Next → Finish.
 
-> [SCREENSHOT 7: Disk Management con C:\ Boot e E:\ Backup]
+> [SCREENSHOT 7: Disk Management con C:\ (sistema) e E:\ (storage VM + backup)]
 
 ### D.2 Creare le directory di storage
 
 PowerShell admin:
 
 ```powershell
-# Su SSD SATA (C:): qui andranno le VM
-New-Item -ItemType Directory -Path "C:\VMs" -Force
-New-Item -ItemType Directory -Path "C:\VMs\Templates" -Force
-New-Item -ItemType Directory -Path "C:\VMs\plane-aziendaA" -Force
-New-Item -ItemType Directory -Path "C:\VMs\plane-aziendaB" -Force
-
-# Su HDD (E:): snapshot, backup locali, dump
+# Tutto su E: (disco grande): VM + snapshot + backup staging + ISO
+New-Item -ItemType Directory -Path "E:\VMs" -Force
+New-Item -ItemType Directory -Path "E:\VMs\Templates" -Force
+New-Item -ItemType Directory -Path "E:\VMs\plane-aziendaA" -Force
+New-Item -ItemType Directory -Path "E:\VMs\plane-aziendaB" -Force
 New-Item -ItemType Directory -Path "E:\Snapshots" -Force
 New-Item -ItemType Directory -Path "E:\BackupStaging" -Force
 New-Item -ItemType Directory -Path "E:\Iso" -Force  # qui mettiamo l'ISO Ubuntu
@@ -313,15 +313,22 @@ New-Item -ItemType Directory -Path "E:\Iso" -Force  # qui mettiamo l'ISO Ubuntu
 
 **Cosa fa:** crea le directory che useremo per organizzare VM, snapshot, ISO. `New-Item -Force` non fallisce se esistono già.
 
+> Se hai un solo disco fisico (caso non consigliato ma possibile per dev/staging), sostituisci tutte le occorrenze di `E:\` con `C:\` in questa Parte e nelle successive — assicurati però di avere almeno 200 GB liberi su `C:\` prima di partire.
+
 ### D.3 Configurare Hyper-V default paths
 
 Hyper-V Manager → click destro su `plane-host` → **Hyper-V Settings**:
-- **Virtual Hard Disks** → cambia in `C:\VMs`
-- **Virtual Machines** → cambia in `C:\VMs`
+- **Virtual Hard Disks** → cambia in `E:\VMs`
+- **Virtual Machines** → cambia in `E:\VMs`
 
 Click OK.
 
-Da qui in poi Hyper-V crea le nuove VM in C:\VMs di default.
+Oppure via PowerShell:
+```powershell
+Set-VMHost -VirtualMachinePath "E:\VMs" -VirtualHardDiskPath "E:\VMs"
+```
+
+Da qui in poi Hyper-V crea le nuove VM in `E:\VMs` di default.
 
 ### D.4 Scaricare ISO Ubuntu sull'host
 
@@ -339,13 +346,13 @@ Hyper-V Manager → click destro su `plane-host` → **New** → **Virtual Machi
 
 Wizard:
 1. Before You Begin → Next.
-2. Specify Name and Location → Name: `plane-template` → "Store the virtual machine in a different location" spuntato → Location: `C:\VMs\Templates` → Next.
+2. Specify Name and Location → Name: `plane-template` → "Store the virtual machine in a different location" spuntato → Location: `E:\VMs\Templates` → Next.
 3. Specify Generation → **Generation 2** (UEFI, più moderno e supportato da Ubuntu 22.04+) → Next.
 4. Assign Memory → 4096 MB iniziale, "Use Dynamic Memory" → spuntato → Next.
 5. Configure Networking → Connection → `vSwitch-LAN` → Next.
 6. Connect Virtual Hard Disk → "Create a virtual hard disk":
    - Name: `plane-template.vhdx`
-   - Location: `C:\VMs\Templates\`
+   - Location: `E:\VMs\Templates\`
    - Size: **40 GB** (template è leggero, ridimensionabile)
    - Next.
 7. Installation Options → "Install an operating system from a bootable image file" → Browse `E:\Iso\ubuntu-server-24.04.iso` → Next.
@@ -472,7 +479,7 @@ Aspetta che Hyper-V Manager mostri la VM in stato "Off".
 Dal PowerShell amministrativo dell'host:
 
 ```powershell
-Optimize-VHD -Path "C:\VMs\Templates\plane-template.vhdx" -Mode Full
+Optimize-VHD -Path "E:\VMs\Templates\plane-template.vhdx" -Mode Full
 ```
 
 **Cosa fa:** rimuove gli zeroed-block del disco virtuale, riduce il file a dimensione minima. Il `.vhdx` passa da ~10 GB a ~3-4 GB. Velocizzerà i clone successivi.
@@ -494,8 +501,8 @@ Ora cloniamo il template per creare la prima VM aziendale.
 PowerShell admin:
 
 ```powershell
-Copy-Item -Path "C:\VMs\Templates\plane-template.vhdx" `
-          -Destination "C:\VMs\plane-aziendaA\plane-aziendaA.vhdx"
+Copy-Item -Path "E:\VMs\Templates\plane-template.vhdx" `
+          -Destination "E:\VMs\plane-aziendaA\plane-aziendaA.vhdx"
 ```
 
 Aspetta 30-60 secondi (copia 3-5 GB su SSD).
@@ -503,11 +510,11 @@ Aspetta 30-60 secondi (copia 3-5 GB su SSD).
 ### F.2 Creare nuova VM che usa il vhdx clonato
 
 Hyper-V Manager → New → Virtual Machine:
-1. Name: `plane-aziendaA` → Location: `C:\VMs\plane-aziendaA`
+1. Name: `plane-aziendaA` → Location: `E:\VMs\plane-aziendaA`
 2. Generation 2
 3. Memory: **12288 MB** (12 GB) + Dynamic Memory spuntato (lo cambieremo a fissi sotto)
 4. Networking: `vSwitch-LAN`
-5. Connect Virtual Hard Disk: **"Use an existing virtual hard disk"** → Browse → `C:\VMs\plane-aziendaA\plane-aziendaA.vhdx`
+5. Connect Virtual Hard Disk: **"Use an existing virtual hard disk"** → Browse → `E:\VMs\plane-aziendaA\plane-aziendaA.vhdx`
 6. Finish.
 
 ### F.3 Configurare CPU + memory + Secure Boot
@@ -1081,7 +1088,7 @@ Trova il processo. Solitamente per Plane: `postgres` durante backup, `celery wor
 
 ```powershell
 # Vedi consumo per cartella (richiede installare WinDirStat o usare PowerShell)
-Get-ChildItem C:\VMs -Recurse | Measure-Object -Property Length -Sum
+Get-ChildItem E:\VMs -Recurse | Measure-Object -Property Length -Sum
 ```
 
 Likely culprits:
@@ -1091,7 +1098,7 @@ Likely culprits:
 Compatta i vhdx (richiede stop VM):
 ```powershell
 Stop-VM -Name "plane-aziendaA"
-Optimize-VHD -Path "C:\VMs\plane-aziendaA\plane-aziendaA.vhdx" -Mode Full
+Optimize-VHD -Path "E:\VMs\plane-aziendaA\plane-aziendaA.vhdx" -Mode Full
 Start-VM -Name "plane-aziendaA"
 ```
 
@@ -1114,15 +1121,15 @@ Start-VM -Name "plane-aziendaA"
 | Update bulk | `C:\Scripts\update-all.ps1` |
 | Snapshot settimanale | `C:\Scripts\weekly-snapshot.ps1` |
 | RAM totale assegnata vs disponibile | `Get-VM \| Measure-Object MemoryAssigned -Sum` |
-| Spazio su SSD | `Get-PSDrive C` |
+| Spazio dischi | `Get-PSDrive C, E` |
 
 ### Path importanti sull'host
 
 | Path | Cosa contiene |
 |---|---|
-| `C:\VMs\Templates\plane-template.vhdx` | Template Ubuntu (golden image) |
-| `C:\VMs\plane-aziendaA\plane-aziendaA.vhdx` | Disco virtuale azienda A |
-| `C:\VMs\plane-aziendaB\plane-aziendaB.vhdx` | Disco virtuale azienda B |
+| `E:\VMs\Templates\plane-template.vhdx` | Template Ubuntu (golden image) |
+| `E:\VMs\plane-aziendaA\plane-aziendaA.vhdx` | Disco virtuale azienda A |
+| `E:\VMs\plane-aziendaB\plane-aziendaB.vhdx` | Disco virtuale azienda B |
 | `E:\Snapshots\` | Snapshot Hyper-V settimanali |
 | `E:\BackupStaging\` | Staging backup (riservato per uso futuro) |
 | `E:\Iso\` | ISO Ubuntu/Windows |
